@@ -1,36 +1,128 @@
 #!/usr/bin/python
+#
+# TODO store directory size in HashMap class. Maintain it through add and del operations
+#
 
-import re, hashlib, os, base64, pickle, itertools, shutil
+import re, hashlib, os, sys, base64, pickle, itertools, shutil
+
+import progressbar
 
 shaFieldSep = "  "
-sha512ext = ".sha512"
+sha512ext = "sha512"
+bz2ext = "bz2"
 
-numSkippedFiles = 0
+# http://stackoverflow.com/questions/7829499/using-hashlib-to-compute-md5-digest-of-a-file-in-python3
+def hashChunkFile(digestFunc, filename, chunk_size = 4096):
+	from functools import partial
+	with open(filename, mode='r') as f:
+		d = digestFunc()
+		#for buf in iter(partial(f.read, chunk_size), b''):
+		while True:
+			buf = f.read(chunk_size)
+			d.update(buf)
+			if not buf:
+				break
+	return d
+
+def getDirSize(path):
+	dirSize = 0
+	for root, dirs, files in os.walk(path):
+		for filename in files:
+			filepath = os.path.join(root,filename)
+			if os.path.isfile(filepath):
+				try:
+					dirSize += os.path.getsize(filepath)
+				except OSError as error:
+					None # this is just an estimating phase
+	return dirSize
+
 
 class hashMap:
 	# Variables declared here are class-static
 
-	def __init__(self, rootPath="", source=None):
+	def __init__(self, rootPath="", sourceFile="", excludePattern=".*\.svn.*"):
 		self.rootPath = ""
 		self.hashDict = dict()
 		self.reverseDict = dict()
 		self.savePath = ""
 
-		if (rootPath != "" and os.path.isdir(rootPath)):
-			self.rootPath = rootPath
-		else: 
-			raise NameError("Root path given is not a directory")
+		if (rootPath != ""):
+			if (os.path.isdir(rootPath)):
+				self.rootPath = rootPath.rstrip("/")
+				self.savePath = os.path.join(os.path.dirname(self.rootPath),
+					'.'.join([os.path.basename(self.rootPath), sha512ext]))
+					#'.'.join([os.path.basename(self.rootPath), int(time.time()), sha512ext]))
+			else: 
+				raise NameError("Root path given is not a directory")
 
-		if (os.path.isfile(source)):
-			self.load(source)
+		if (sourceFile != ""):
+			if (os.path.isfile(sourceFile)):
+				self.load(sourceFile)
+			else:
+				print "Warning: Source file '%s' not found" % sourceFile
+		elif (self.savePath != ""): 
+			# look for a .shasum.bz2 first, then a .shasum
+			if (os.path.isfile('.'.join([self.savePath, bz2ext]))):
+				# load() saves the new path
+				self.load('.'.join([self.savePath, bz2ext]))
+			elif (os.path.isfile(self.savePath)):
+				self.load()
+			else:
+				self.build(excludePattern=excludePattern)
+				self.save()
 
 	def __len__(self):
-		# this is the number of unique hashes. With a reverse map, I could easily list the number of files
+		"""Returns the number of files, including duplicates"""
 		#return (len(self.hashDict))
 		return (len(self.reverseDict))
 
-	# This function finds the hash of a file based on its path
+	def __repr__(self):
+		"""Represent as string, format conforms to 'shasum' output"""
+		repr_str = ""
+		for key, val in self.hashDict.items():
+			for path in val:
+				repr_str += base64.b16encode(key).lower() + shaFieldSep + path + "\n"
+
+		return(repr_str)
+
+	def addFile(self, fileHash, filePath):
+		"""Internal: Add a file and hash to the appropriate data structures"""
+		if (filePath.startswith(self.rootPath)):
+			filePath = os.path.relpath(filePath, self.rootPath)
+		if (fileHash not in self.hashDict):
+			# map the binary hash (digest) to the file path
+			self.hashDict[fileHash] = [filePath]
+		else: 
+			# Duplicate file found
+			# This hash is already associated with a list
+			self.hashDict[fileHash].append( filePath )
+		# also map the path to the hash
+		self.reverseDict[filePath] = fileHash
+
+	def delFile(self, filePath):
+		"""Internal: Delete a file and hash from the appropriate data structures"""
+		fileHash=self.reverseDict[filePath]
+		
+		index = self.hashDict[fileHash].index(filePath)
+		del self.hashDict[fileHash][index]
+		del self.reverseDict[filePath]
+		if (not self.hashDict[fileHash]):
+			del self.hashDict[fileHash]
+
+	def findByPattern(self, pattern, action=False, options=re.IGNORECASE):
+		fileMatcher = re.compile(pattern,options)
+		matchCount = 0
+		for filePath, fileHash in self.reverseDict.items():
+			if (fileMatcher.match(filePath)):
+				print "'%s' matches" % filePath
+				matchCount += 1
+				if (action == "delete"):
+					self.delFile(filePath)
+
+		print "Found %d matches" % matchCount
+
 	def findByPath (self, searchPath):
+		"""Find the hash of a file based on its path"""
 		if (searchPath not in self.reverseDict):
 			return False
 		else:
@@ -43,59 +135,141 @@ class hashMap:
 					#return key
 		#return False
 
-	# This function builds a hash dict object for a files in a path
-	def update(self, pattern=".*", verbose=False):
-		global numSkippedFiles
+	def shortenPaths(self, longPath=False, shortPath="", act=True):
+		if (not longPath):
+			longPath = self.rootPath + '/'
 
-		expanding = len(self.hashDict) > 0
+		print "Replacing '%s' with '%s'" % (longPath, shortPath)
+
+		for path, key in self.reverseDict.items():
+			if (not path.startswith(longPath)):
+				raise NameError ("This was meant to be used to shorten the beginning of the path")
+			newPath = path.replace(longPath, shortPath)
+			if (act):
+				self.delFile(path)
+				self.addFile(key, newPath)
+			else:
+				print newPath
+
+	def check(self):
+		widgets = ["Progress: ", progressbar.Bar(marker="=", left="[", right="]"), " ", progressbar.Fraction(), " ", progressbar.Percentage() ]
+		pbar = progressbar.ProgressBar(widgets=widgets, maxval=len(self))
+		success = True
+
+		pbar.start()
+		for path, key in self.reverseDict.items():
+			mypath = os.path.join(self.rootPath, path)
+			if (not os.path.exists(mypath)):
+				print "Not found: '%s'" % mypath
+				success = False
+				continue
+			if (os.path.islink(mypath)):
+				myhash = hashlib.sha512(os.readlink(mypath))
+			else:
+				myhash = hashChunkFile(hashlib.sha512, mypath)
+			if (key != myhash.digest()):
+				print "Checksum failed: '%s': '%s' != '%s'" % (mypath, base64.b16encode(key).lower(), myhash.hexdigest())
+				success = False
+			pbar.increment()
+		pbar.finish()
+		return success
+			
+			
+
 	
-		fileMatcher = re.compile(pattern, re.IGNORECASE)
+	# TODO change to "build" and have separate "add missing"
+	def build(self, includePattern=False, excludePattern=False, expand=False, verbose=False):
+		"""Build a hash dict object for files in a path"""
+
+		print "Determining directory size..."
+		dirSize = getDirSize(self.rootPath)
+		#widgets = ["Progress: ", progressbar.Bar(marker="=", left="[", right="]"), " ", progressbar.Percentage() ]
+		widgets = ["Progress: ", progressbar.Bar(marker="=", left="[", right="]"), " ", progressbar.Fraction(human=True), " ", progressbar.Percentage() ]
+		pbar = progressbar.ProgressBar(widgets=widgets, maxval=dirSize)
+
+		if expand:
+			print "Only checking new files in existing hash map with %d files" % len(self)
+		else:
+			print "Building new hash map"
+		#if (includePattern):
+			#includeMatcher = re.compile(includePattern, re.IGNORECASE)
+		if (excludePattern):
+			excludeMatcher = re.compile(excludePattern, re.IGNORECASE)
+
 	
+		pbar.start()
+		#pnum = pden = 0
 		for root, dirs, files in os.walk(self.rootPath):
-			#for filename in fnmatch.filter(files, pattern):
+			if (excludePattern and excludeMatcher.match(root)):
+				continue
+			#pden += len(files)
 			for filename in files:
-				if (fileMatcher.match(filename)):
-					mypath = os.path.join(root, filename)
-	
+				# might check for a specific time to have elapsed
+				#pbar.update(pnum, pden)
+				#print "%d %d" % (pnum, pden)
+				#pnum += 1
+				#if (includePattern and (not includeMatcher.match(filename))):
+					#continue
+				#if (excludePattern and excludeMatcher.match(filename)):
+					#continue
+
+				mypath = os.path.join(root, filename)
+				if not os.path.isfile(mypath):
+					continue
+
+				try: 
+					pbar.increment(os.path.getsize(mypath))
+
 					# If we are expanding and this path is anywhere in the dictionary,
 					# do not update the hash
-					#if (expand and (mypath in list(itertools.chain(hashDict.values())))):
-					if (expanding and (self.findByPath(mypath) != False)):
-						numSkippedFiles += 1
-						if (verbose and ((numSkippedFiles % 100) == 0)):
-							print ".",
+					if (expand and (self.findByPath(mypath) != False)):
 						continue
 
-					try:
-						# Open the file and compute the hash
-						f = open (mypath, 'r')
-						myhash = hashlib.sha512(f.read())
-						f.close()
-						#print myhash.hexdigest() + "  \"" + mypath + "\""
+					# Open the file and compute the hash
+					if (os.path.islink(mypath)):
+						myhash = hashlib.sha512(os.readlink(mypath))
+					else:
+						myhash = hashChunkFile(hashlib.sha512, mypath)
+						#f = open (mypath, 'r')
+						#myhash = hashlib.sha512(f.read())
+						#f.close()
+					#print myhash.hexdigest() + "  \"" + mypath + "\""
 	
-						if (myhash.digest() not in self.hashDict):
-							# map the binary hash (digest) to the file path
-							self.hashDict[myhash.digest()] = [mypath]
-						else: 
-							# Duplicate file found
-							# This hash is already associated with a list
-							self.hashDict[myhash.digest()].append( mypath )
-						# also map the path to the hash
-						self.reverseDict[mypath] = myhash.digest()
+					self.addFile(myhash.digest(), mypath)
 							
-						if (verbose):
-							print myhash.hexdigest() + shaFieldSep + repr(self.hashDict[myhash.digest()]) 
+					if (verbose):
+						print myhash.hexdigest() + shaFieldSep + repr(self.hashDict[myhash.digest()]) 
+				except (IOError, OSError) as error:
+					print str(error) + ", skipping"
 	
-					except IOError as error:
-						print error
-	
+		pbar.finish()
 		print "Ended with %d files, %d unique hashes" % (len(self.reverseDict), len(self.hashDict))
 	
-		return self
+	def removeMissing(self):
+		"""Remove files referenced in the data structures that are missing on filesystem"""
+		for path, key in self.reverseDict.items():
+			if (not os.path.exists(path)):
+				print "%s missing" % (path)
+				#remove the path from the list of paths
+				self.delFile(path)
 
-	def load(self, filePath):
-		self.savePath = filePath
-		f = open(filePath, 'r')
+	def addMissing(self, includePattern=False, verbose=False):
+		"""Add files on filesystem that are missing in data structures"""
+		self.build(includePattern=includePattern, expand=True, verbose=verbose)
+
+	def load(self, filePath=None):
+		global bz2ext
+		"""Load hashes from file"""
+		if (filePath != None):
+			self.savePath = filePath
+		print "Loading file '%s'" % self.savePath
+
+		if (self.savePath.endswith(bz2ext)):
+			import bz2
+			f = bz2.BZ2File(self.savePath, 'r')
+		else:
+			f = open(self.savePath, 'r')
+
 		for line in f.readlines():
 			line = line.rstrip()
 	
@@ -103,32 +277,38 @@ class hashMap:
 	
 			myhash = base64.b16decode(lineHash.upper())
 	
-			#print lineHash
-			#print linePath
-			if (myhash not in self.hashDict):
-				# map the binary hash (digest) to the file path
-				self.hashDict[myhash] = [mypath]
-			else: 
-				# This hash is already associated with a list
-				self.hashDict[myhash].append( mypath )
-			# also map the path to the hash
-			self.reverseDict[mypath] = myhash
-								
-			#print lineHash + shaFieldSep + repr(hashDict[myhash])
+			self.addFile(myhash, mypath)
 
 		f.close()
 
-		return self
 
-	def save(self, filePath=None):
-		if (filePath == None):
-			filePath = self.savePath
+	def save(self, filePath=None, compress=True):
+		global bz2ext
+		"""Save hashes to file"""
+		if (filePath != None):
+			self.savePath = filePath
+		if (compress and not self.savePath.endswith(bz2ext)):
+			self.savePath = '.'.join([self.savePath, bz2ext])
 
-		f = open(filePath, 'w')
+		if (os.path.isfile(self.savePath)):
+			fileBaseName, fileExtension = os.path.basename(self.savePath).split('.', 1)
+			backupPath = os.path.join(os.path.dirname(self.savePath),
+				'.'.join(['-'.join([fileBaseName, 
+						"%d" % os.stat(self.savePath).st_mtime]),
+					fileExtension])
+					)
+			print "Backing up existing file to '%s'" % backupPath
+			shutil.copy2(self.savePath, backupPath)
 
-		for key, val in self.hashDict.items():
-			for path in val:
-				f.write(base64.b16encode(key).lower() + shaFieldSep + path + "\n")
+		print "Writing file '%s'" % self.savePath
+
+		if (self.savePath.endswith(bz2ext)):
+			import bz2
+			f = bz2.BZ2File(self.savePath, 'w')
+		else:
+			f = open(self.savePath, 'w')
+
+		f.write(str(self))
 
 		f.close()
 	
@@ -136,24 +316,63 @@ class hashMap:
 		global sha512ext
 
 		self.update (self.rootPath)
-		sha512filename = "hashpatch." + variableName + sha512ext
+		sha512filename = ".".join(["hashpatch", variableName, sha512ext])
 		self.save(sha512filename)
 		#pickleFilename = "hashpatch." + variableName + ".pickle"
 		#pickleFile = open(pickleFilename, "w")
 		#pickle.dump(hashDict, pickleFile)
 		#pickleFile.close()
 	
-		return self
+
+	def makeDupTable (self, minSize=1024):
+		"""List duplicate files, in groups"""
+		dupList = []
+		for key, val in self.hashDict.items():
+			if (os.path.getsize(val[0]) < minSize):
+				continue
+			if (len(val) > 1):
+				dupList.append([key, val, os.path.getsize(val[0])])
+		return dupList
+
+	def makeSubset(self, subdir):
+		newMap = hashMap()
+		newMap.rootPath = self.rootPath
+		for path, key in self.reverseDict.items():
+			if (path.startswith(subdir)):
+				newMap.addFile(fileHash=key, filePath=path)
+		return newMap
 
 
 
+################################################################################
+# Utility functions
+		
+def printDupTable(DupTable, sortKey=2):
+	groupID = 1
+	for [key, paths, size] in sorted(DupTable, key=lambda record: record[sortKey]):
+		print "Group %d (%d b):" % (groupID, size)
+		print base64.b16encode(key).lower()
+		for path in paths:
+			print "%s" % path
+			if (os.path.getsize(path) != size):
+				print "Files not all the same size: %d" % os.path.getsize(path)
+				#raise NameError ("Something wrong with hash algorithm: files not all the same size")
+		groupID += 1
+		print ""
 
-
+def showUnequalFiles(DupTable):
+	for [key, paths, size] in DupTable:
+		for path in paths:
+			if (os.path.getsize(path) != size):
+				print "Key: " + base64.b16encode(key).lower() + "\nSizes:"
+				for x in paths:
+					print "%d %s" % (os.path.getsize(x), x)
+				break
 
 def openOrBuildHashDict (variableName, searchPath):
 	global sha512ext
 	
-	sourceFilename = "hashpatch." + variableName + sha512ext
+	sourceFilename = '.'.join(["hashpatch", variableName, sha512ext])
 
 	if (os.path.exists(sourceFilename)):
 		print "Loading from file '%s'" % sourceFilename, 
@@ -169,53 +388,79 @@ def openOrBuildHashDict (variableName, searchPath):
 	return hashDict
 
 
-def checkForMissingInDest(sourceHashDict, destHashDict):
+def checkForMissingInDest(sourceHashDict, destHashDict, dry_run=False, act=False, exclude=""):
 	global destDir
 
-	foundMissing = 0 
+	foundMissing = [] 
 
-	rf = open('hashpatch.report', 'w')
+	#rf = open('hashpatch.report', 'w')
 
-	for key, val in sourceHashDict.items():
-		if (key not in destHashDict):
-			foundMissing += 1
-			print base64.b16encode(key) + shaFieldSep + str(val) + " does not exist in destination"
-			rf.write(base64.b16encode(key) + shaFieldSep + str(val) + "\n")
+	for key, val in sourceHashDict.hashDict.items():
+		if ((exclude != "") and (exclude in val[0])):
+			continue
+		if (key not in destHashDict.hashDict):
+			foundMissing.append(key)
+			#rf.write(base64.b16encode(key) + shaFieldSep + str(val) + "\n")
 
-			if True:
-				sourcePathParts = val[0].split('/')
-				destSubDir = '/'.join([destDir, 'iPhoto', sourcePathParts[-3], sourcePathParts[-2]])
-				print "Copying " + val[0] + " -> " + destSubDir
+			if dry_run or act:
+				# val[0] gets the first one if there are more than one copy of the file
+				#pathParts = os.path.dirname(val[0]).split('/')
+				#popped = pathParts.pop(0) # delete the first dir
+				#print popped
+				#if (popped != sourceHashDict.rootPath):
+				#	raise NameError ("Not yet supported")
+				#pathParts.insert(0, destHashDict.rootPath) # put the dest dir in front
+				sourcePath = os.path.join(sourceHashDict.rootPath, val[0])
+				destPath = os.path.join(destHashDict.rootPath, val[0])
 
-				if (not os.path.exists(destSubDir)):
-					os.makedirs(destSubDir)
+				print "Copying '%s' -> '%s'" % (sourcePath, destPath)
+
+				if os.path.exists(destPath):
+					print "WARNING: Destination already exists!"
+				elif act:
+					if (not os.path.exists(os.path.dirname(destPath))):
+						os.makedirs(os.path.dirname(destPath))
 				
-				#shutil.copy2(val[0], destSubDir)
+					shutil.copy2(sourcePath, destPath)
+			else:
+				print base64.b16encode(key) + " does not exist in destination"
+				print "Files (%d):" % len(val)
+				for file in val:
+					print "\t" + file
 
+	print "%s %d missing files in destination" % ("Copied" if act else "Found", len(foundMissing))
+	#rf.close()
+	return foundMissing
 
-	print "Found %d missing files in destination" % foundMissing
-	rf.close()
-
-def deleteInDest (sourceMap, destMap, act=False):
+def deleteDupsInDest (sourceMap, destMap, act=False, prompt=False, verbose=False):
 	foundDup = 0
+	foundSize = 0
 
-	rf = open('hashpatch.report', 'a')
+	#rf = open('hashpatch.report', 'a')
 
 	for key, val in destMap.hashDict.items():
 		if (key in sourceMap.hashDict):
-			foundDup += 1
 		
-			if act:
-				for path in val:
-					print "Removing '%s'" % path
-					os.remove(path)
-					# delete the parent directory if it is empty
-					if (not os.listdir(os.path.dirname(path))):
-						# This is a function that recursively removes empty directories
-						os.removedirs(os.path.dirname(path))
+			for path in val:
+				if (os.path.getsize(path) == 0):
+					continue
+				foundDup += 1
+				foundSize += os.path.getsize(path)
+				print "%s duplicate of '%s' at '%s' (%s)" % ("Removing" if act else "Found", sourceMap.hashDict[key][0], path, progressbar.humanize_bytes(os.path.getsize(path)))
+				if (verbose):
+					print "Matches: " + str(sourceMap.hashDict[key])
+				if act:
+					if (prompt):
+						print "OK? ", 
+					if (not prompt or sys.stdin.readline().lower().startswith('y')):
+						os.remove(path)
+						# delete the parent directory if it is empty
+						if (not os.listdir(os.path.dirname(path))):
+							# This is a function that recursively removes empty directories
+							os.removedirs(os.path.dirname(path))
 
-	print "%s %d duplicate files in destination" % ("Deleted" if act else "Found", foundDup)
-	rf.close()
+	print "%s %d duplicate files (%s) in destination" % ("Deleted" if act else "Found", foundDup, progressbar.humanize_bytes(foundSize))
+	#rf.close()
 	
 def deleteBrokenLinks (path, act=False):
 	
@@ -241,5 +486,120 @@ def deleteEmptyDirs (path, act=False):
 			if (act):
 				os.removedirs(root)
 			print "%s empty directory at %s" % ("Deleted" if act else "Found", root)
+
+
+import datetime
+def sortByYearModified (path, excludePattern=False):
+	yearMap = dict()
+	if (excludePattern):
+		fileMatcher = re.compile(excludePattern, re.IGNORECASE)
+
+	for root, dirs, files in os.walk(path):
+		if (excludePattern and fileMatcher.match(root)):
+			continue 
+		for filename in files:
+			mypath = os.path.join(root, filename)
+			year = datetime.date.fromtimestamp(os.stat(mypath).st_mtime).year
+			if (year not in yearMap):
+				yearMap[year] = [mypath]
+			else:
+				yearMap[year].append(mypath)
+	
+	return yearMap
+
+
+
+def moveFileToArchive(filePath, archiveRoot, act=False):
+	year = datetime.date.fromtimestamp(os.stat(filePath).st_mtime).year
+	destPath = os.path.join(archiveRoot, str(year), os.path.basename(filePath))
+	if (not os.path.exists(destPath)):
+		print "Moving " + filePath + " -> " + destPath
+		if (act):
+			if (not os.path.isdir(os.path.dirname(destPath))):
+				os.makedirs(os.path.dirname(destPath))
+			shutil.move(filePath, destPath)
+	else:
+		print "File " + destPath + " already exists."
+
+def makeMissingReport(BackupBasename, BackupMap, MissingFiles):
+        for key in MissingFiles:
+                numExist = 0
+                for path in BackupMap.hashDict[key]:
+                        if (os.path.isfile(path.replace(BackupBasename, ""))):
+                                numExist += 1
+                #if numExist > 0:
+                        #print "OK, %d files still exist" % numExist
+                #else:
+		if numExist == 0:
+                	print base64.b16encode(key) + ":"
+			print BackupMap.hashDict[key][0]
+                        print "FAIL, all files with that checksum are missing"
+		else:
+			print "OK: " + BackupMap.hashDict[key][0] + ((" and %d others" % numExist) if numExist >1 else "")
+
+class dupeRecord:
+	def __init__(self, key, fileSize, numDupes):
+		self.key = key
+		self.fileSize = fileSize
+		self.numDupes = numDupes
+
+	def __str__(self):
+		return " ".join([self.key, self.fileSize, self.numDupes])
+
+
+def findDupes(HashMap, dupesOnly=True):
+	"An interactive routine similar to 'dupseek.pl' which implements a greedy algorithm, pointing out the duplicate groups using the most space. "
+	# need to sort by size multiplied by number of duplicates
+	print "Calculating file sizes..."
+	spaceHogs = []
+	for key, paths in HashMap.hashDict.items():
+		try:
+			size = os.path.getsize(paths[0])
+			spaceHogs.append( dupeRecord(key=key, fileSize=size, numDupes=len(paths)) )
+		except OSError:
+			print "File '%s' is missing" % paths[0]
+			HashMap.delFile(paths[0])
+			continue
+	spaceHogs = sorted(spaceHogs, key=lambda record: record.numDupes * record.fileSize, reverse=True)
+
+	for item in spaceHogs:
+		if (dupesOnly and item.numDupes == 1):
+			continue
+		print " ".join([progressbar.humanize_bytes(item.numDupes*item.fileSize), str(item.numDupes), progressbar.humanize_bytes(item.fileSize), repr(HashMap.hashDict[item.key])])
+		
+
+		def checkResponseValid (response, numDupes):
+			matches = re.match("(\S+)(\d+)", response)
+			if (response == ""):
+				return True
+			if (not matches):
+				return False
+			if (response in ['q', '']):
+				return True
+			if (matches.group(1) in ['k', 'l'] \
+				and matches.group(2) in range(numDupes)):
+				return False
+
+			return True
+
+		while(True):
+			print "\n", \
+				"[return] to continue, [q] to quit\n", \
+				"[k0...k"+str(item.numDupes)+"] keep one file and remove the rest"
+			# if system has symbolic links
+			if ( True ):
+				print "[l0...l"+str(item.numDupes)+"] keep one file and substitute the rest with symbolic links\n"
+		
+			response = sys.stdin.readline()
+			if (checkResponseValid(response.strip(), item.numDupes)):
+				print "Response not recognized"
+				break
+
+		#responseCodes = dict( zip( map(lambda x: "k%d" % x, range(item.numDupes)), ) ) 
+				#sys.stdin.readline().lower().startswith('y')
+		
+			
+
+			
 
 
