@@ -5,7 +5,10 @@ import re, hashlib, os, base64, pickle, itertools, shutil
 sourceDir = "/Users/ryan/Pictures/iPhoto Library/Originals"
 destDir = "/Volumes/ryan/Pictures"
 
-pattern = ".*\.jp[e]?g$" # might extend this and use 're' instead
+pattern = ".*\.jp[e]?g$" 
+
+shaFieldSep = "  "
+sha512ext = ".sha512"
 
 numSkippedFiles = 0
 
@@ -29,7 +32,7 @@ def loadFromFile(filepath):
 			# This hash is already associated with a list
 			hashDict[myhash].append( mypath )
 							
-		#print lineHash + "  " + repr(hashDict[myhash])
+		#print lineHash + shaFieldSep + repr(hashDict[myhash])
 
 	f.close()
 
@@ -43,10 +46,18 @@ def saveToFile(hashDict, filePath):
 
 		for path in val:
 
-			f.write(base64.b16encode(key).lower() + "  " + path + "\n")
+			f.write(base64.b16encode(key).lower() + shaFieldSep + path + "\n")
 
 	f.close()
 
+def hashDictFindPath (hashDict, searchPath):
+	# This is not a very efficient algorithm
+	for key, pathList in hashDict.items():
+		for path in pathList:
+			if (searchPath == path):
+				return key
+
+	return False
 
 def buildHashDict (path, hashDict = dict()):
 	global numSkippedFiles
@@ -62,8 +73,11 @@ def buildHashDict (path, hashDict = dict()):
 				mypath = os.path.join(root, filename)
 
 				# If we are expanding and this path is anywhere in the dictionary:
-				if (expand and (mypath in list(itertools.chain(hashDict.values())))):
+				#if (expand and (mypath in list(itertools.chain(hashDict.values())))):
+				if (expand and (hashDictFindPath(hashDict, mypath) != False)):
 					numSkippedFiles += 1
+					if ((numSkippedFiles % 100) == 0):
+						print ".",
 					continue
 
 				try:
@@ -87,7 +101,7 @@ def buildHashDict (path, hashDict = dict()):
 						# This hash is already associated with a list
 						hashDict[myhash.digest()].append( mypath )
 							
-					print myhash.hexdigest() + "  " + repr(hashDict[myhash.digest()]) 
+					print myhash.hexdigest() + shaFieldSep + repr(hashDict[myhash.digest()]) 
 
 				except IOError as error:
 					print error
@@ -96,9 +110,11 @@ def buildHashDict (path, hashDict = dict()):
 
 	return hashDict
 
-def buildAndSaveHashDict (variableName, searchPath):
-	hashDict = buildHashDict (searchPath)
-	sha512filename = "hashpatch." + variableName + ".sha512"
+def buildAndSaveHashDict (variableName, searchPath, hashDict=dict()):
+	global sha512ext
+
+	hashDict = buildHashDict (searchPath, hashDict)
+	sha512filename = "hashpatch." + variableName + sha512ext
 	saveToFile(hashDict, sha512filename)
 	#pickleFilename = "hashpatch." + variableName + ".pickle"
 	#pickleFile = open(pickleFilename, "w")
@@ -108,12 +124,12 @@ def buildAndSaveHashDict (variableName, searchPath):
 	return hashDict
 
 def openOrBuildHashDict (variableName, searchPath):
-	#exec "global " + variableName
+	global sha512ext
 	
-	sourceFilename = "hashpatch." + variableName + ".sha512"
+	sourceFilename = "hashpatch." + variableName + sha512ext
 
 	if (os.path.exists(sourceFilename)):
-		print "Loading from file", 
+		print "Loading from file '%s'" % sourceFilename, 
 		#sourcePickle = open(sourcePickleFilename, "r")
 		#hashDict = pickle.load(sourcePickle)
 		#sourcePickle.close()	
@@ -156,17 +172,17 @@ def checkForMissingInDest(sourceHashDict, destHashDict):
 
 	rf = open('hashpatch.report', 'w')
 
-
 	for key, val in sourceHashDict.items():
 		if (key not in destHashDict):
 			foundMissing += 1
-			print base64.b16encode(key) + "  \"" + str(val) + "\" does not exist in destination"
-			rf.write(base64.b16encode(key) + "  " + str(val) + "\n")
+			print base64.b16encode(key) + shaFieldSep + str(val) + " does not exist in destination"
+			rf.write(base64.b16encode(key) + shaFieldSep + str(val) + "\n")
 
 			if True:
 				sourcePathParts = val[0].split('/')
 				destSubDir = '/'.join([destDir, 'iPhoto', sourcePathParts[-3], sourcePathParts[-2]])
 				print "Copying " + val[0] + " -> " + destSubDir
+
 				if (not os.path.exists(destSubDir)):
 					os.makedirs(destSubDir)
 				
