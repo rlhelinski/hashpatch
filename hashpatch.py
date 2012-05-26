@@ -247,11 +247,14 @@ class hashMap:
 	
 	def removeMissing(self):
 		"""Remove files referenced in the data structures that are missing on filesystem"""
+		numMissing = 0
 		for path, key in self.reverseDict.items():
-			if (not os.path.exists(path)):
+			if (not os.path.exists(os.path.join(self.rootPath, path))):
+				numMissing += 1
 				print "%s missing" % (path)
 				#remove the path from the list of paths
 				self.delFile(path)
+		print "Removed %d missing files" % numMissing
 
 	def addMissing(self, includePattern=False, verbose=False):
 		"""Add files on filesystem that are missing in data structures"""
@@ -262,7 +265,7 @@ class hashMap:
 		"""Load hashes from file"""
 		if (filePath != None):
 			self.savePath = filePath
-		print "Loading file '%s'" % self.savePath
+		print "Loading file '%s'," % self.savePath,
 
 		if (self.savePath.endswith(bz2ext)):
 			import bz2
@@ -280,6 +283,7 @@ class hashMap:
 			self.addFile(myhash, mypath)
 
 		f.close()
+		print "%d files" % len(self)
 
 
 	def save(self, filePath=None, compress=True):
