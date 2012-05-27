@@ -278,7 +278,11 @@ class hashMap:
 	
 			(lineHash, mypath) = line.split('  ', 1)
 	
-			myhash = base64.b16decode(lineHash.upper())
+			try:
+				myhash = base64.b16decode(lineHash.upper())
+			except TypeError as myError:
+				print line
+				print myError
 	
 			self.addFile(myhash, mypath)
 
