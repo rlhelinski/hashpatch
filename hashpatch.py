@@ -74,6 +74,8 @@ class hashMap:
 	def __len__(self):
 		"""Returns the number of files, including duplicates"""
 		#return (len(self.hashDict))
+		# should be equal to 
+		sum(map(len, self.hashDict))
 		return (len(self.reverseDict))
 
 	def __repr__(self):
@@ -85,10 +87,14 @@ class hashMap:
 
 		return(repr_str)
 
-	def addFile(self, fileHash, filePath):
+	def _addFile(self, fileHash, filePath):
 		"""Internal: Add a file and hash to the appropriate data structures"""
 		if (filePath.startswith(self.rootPath)):
 			filePath = os.path.relpath(filePath, self.rootPath)
+
+		if (filePath in self.reverseDict):
+			raise NameError('Path \'%s\' already exists?' % filePath)
+
 		if (fileHash not in self.hashDict):
 			# map the binary hash (digest) to the file path
 			self.hashDict[fileHash] = [filePath]
@@ -99,15 +105,25 @@ class hashMap:
 		# also map the path to the hash
 		self.reverseDict[filePath] = fileHash
 
-	def delFile(self, filePath):
+	def _delFile(self, filePath):
 		"""Internal: Delete a file and hash from the appropriate data structures"""
+		#print len(self.reverseDict), 
 		fileHash=self.reverseDict[filePath]
+		del self.reverseDict[filePath]
+		#print len(self.reverseDict), 
 		
 		index = self.hashDict[fileHash].index(filePath)
+		#print len(self.hashDict[fileHash]),
 		del self.hashDict[fileHash][index]
-		del self.reverseDict[filePath]
+		#print len(self.hashDict[fileHash]),
+		# If hashDict file list is empty
 		if (not self.hashDict[fileHash]):
+			# remove it from the map
+			#print len(self.hashDict), 
 			del self.hashDict[fileHash]
+			#print len(self.hashDict), 
+		#print ""
+		return self
 
 	def findByPattern(self, pattern, action=False, options=re.IGNORECASE):
 		fileMatcher = re.compile(pattern,options)
@@ -117,12 +133,15 @@ class hashMap:
 				print "'%s' matches" % filePath
 				matchCount += 1
 				if (action == "delete"):
-					self.delFile(filePath)
+					self._delFile(filePath)
 
 		print "Found %d matches" % matchCount
 
 	def findByPath (self, searchPath):
 		"""Find the hash of a file based on its path"""
+		if (searchPath.startswith(self.rootPath)):
+			searchPath = os.path.relpath(searchPath, self.rootPath)
+		#print searchPath
 		if (searchPath not in self.reverseDict):
 			return False
 		else:
@@ -146,12 +165,19 @@ class hashMap:
 				raise NameError ("This was meant to be used to shorten the beginning of the path")
 			newPath = path.replace(longPath, shortPath)
 			if (act):
-				self.delFile(path)
-				self.addFile(key, newPath)
+				self._delFile(path)
+				self._addFile(key, newPath)
 			else:
 				print newPath
 
+	def update(self):
+		self.removeMissing()
+		self.addNew()
+		self.save()
+
 	def check(self):
+		"""Verify all the hashes"""
+
 		widgets = ["Progress: ", progressbar.Bar(marker="=", left="[", right="]"), " ", progressbar.Fraction(), " ", progressbar.Percentage() ]
 		pbar = progressbar.ProgressBar(widgets=widgets, maxval=len(self))
 		success = True
@@ -188,7 +214,7 @@ class hashMap:
 		pbar = progressbar.ProgressBar(widgets=widgets, maxval=dirSize)
 
 		if expand:
-			print "Only checking new files in existing hash map with %d files" % len(self)
+			print "Only checking for new files in existing hash map with %d files" % len(self)
 		else:
 			print "Building new hash map"
 		#if (includePattern):
@@ -222,7 +248,7 @@ class hashMap:
 
 					# If we are expanding and this path is anywhere in the dictionary,
 					# do not update the hash
-					if (expand and (self.findByPath(mypath) != False)):
+					if (expand and self.findByPath(mypath)):
 						continue
 
 					# Open the file and compute the hash
@@ -235,7 +261,7 @@ class hashMap:
 						#f.close()
 					#print myhash.hexdigest() + "  \"" + mypath + "\""
 	
-					self.addFile(myhash.digest(), mypath)
+					self._addFile(myhash.digest(), mypath)
 							
 					if (verbose):
 						print myhash.hexdigest() + shaFieldSep + repr(self.hashDict[myhash.digest()]) 
@@ -247,16 +273,15 @@ class hashMap:
 	
 	def removeMissing(self):
 		"""Remove files referenced in the data structures that are missing on filesystem"""
-		numMissing = 0
+		initNum = len(self.reverseDict)
 		for path, key in self.reverseDict.items():
 			if (not os.path.exists(os.path.join(self.rootPath, path))):
-				numMissing += 1
-				print "%s missing" % (path)
+				print "'%s' is missing" % (path)
 				#remove the path from the list of paths
-				self.delFile(path)
-		print "Removed %d missing files" % numMissing
+				self._delFile(path)
+		print "Removed %d missing files" % (initNum - len(self.reverseDict))
 
-	def addMissing(self, includePattern=False, verbose=False):
+	def addNew(self, includePattern=False, verbose=False):
 		"""Add files on filesystem that are missing in data structures"""
 		self.build(includePattern=includePattern, expand=True, verbose=verbose)
 
@@ -284,7 +309,11 @@ class hashMap:
 				print line
 				print myError
 	
-			self.addFile(myhash, mypath)
+			try:
+				self._addFile(myhash, mypath)
+			except NameError as e:
+				print e 
+				# ignore this entry in the input
 
 		f.close()
 		print "%d files" % len(self)
@@ -347,7 +376,7 @@ class hashMap:
 		newMap.rootPath = self.rootPath
 		for path, key in self.reverseDict.items():
 			if (path.startswith(subdir)):
-				newMap.addFile(fileHash=key, filePath=path)
+				newMap._addFile(fileHash=key, filePath=path)
 		return newMap
 
 
@@ -396,7 +425,8 @@ def openOrBuildHashDict (variableName, searchPath):
 	return hashDict
 
 
-def checkForMissingInDest(sourceHashDict, destHashDict, dry_run=False, act=False, exclude=""):
+
+def checkForMissingInDest(sourceHashDict, destHashDict, dry_run=False, act=False, exclude="", collision_ext = ".remote"):
 	global destDir
 
 	foundMissing = [] 
@@ -423,13 +453,18 @@ def checkForMissingInDest(sourceHashDict, destHashDict, dry_run=False, act=False
 
 				print "Copying '%s' -> '%s'" % (sourcePath, destPath)
 
+				ext = ''
 				if os.path.exists(destPath):
-					print "WARNING: Destination already exists!"
-				elif act:
+					ext = collision_ext
+					print "WARNING: Destination already exists! Renaming source to '%s'" % (destPath + ext)
+					if (os.path.isfile(destPath+ext)):
+						raise NameError ('Collision resolution failed')
+
+				if act:
 					if (not os.path.exists(os.path.dirname(destPath))):
 						os.makedirs(os.path.dirname(destPath))
 				
-					shutil.copy2(sourcePath, destPath)
+					shutil.copy2(sourcePath, destPath+ext)
 			else:
 				print base64.b16encode(key) + " does not exist in destination"
 				print "Files (%d):" % len(val)
@@ -450,7 +485,9 @@ def deleteDupsInDest (sourceMap, destMap, act=False, prompt=False, verbose=False
 		if (key in sourceMap.hashDict):
 		
 			for path in val:
+				path = os.path.join(destMap.rootPath, path)
 				if (os.path.getsize(path) == 0):
+					# If it's an empty file?
 					continue
 				foundDup += 1
 				foundSize += os.path.getsize(path)
@@ -566,7 +603,7 @@ def findDupes(HashMap, dupesOnly=True):
 			spaceHogs.append( dupeRecord(key=key, fileSize=size, numDupes=len(paths)) )
 		except OSError:
 			print "File '%s' is missing" % paths[0]
-			HashMap.delFile(paths[0])
+			HashMap._delFile(paths[0])
 			continue
 	spaceHogs = sorted(spaceHogs, key=lambda record: record.numDupes * record.fileSize, reverse=True)
 
