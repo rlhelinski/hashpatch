@@ -319,6 +319,7 @@ class ProgressBar(object):
 		(datetime.datetime.now() - self.last_update).microseconds > self.update_interval
 
     def increment(self, amt=1):
+        assert 0 <= amt
         self.update(self.numer+amt)
 
     def update(self, numer=1, denom=False):
