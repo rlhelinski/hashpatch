@@ -267,6 +267,9 @@ class hashMap:
 						print myhash.hexdigest() + shaFieldSep + repr(self.hashDict[myhash.digest()]) 
 				except (IOError, OSError) as error:
 					print str(error) + ", skipping"
+				except AssertionError as error:
+					#print str(error), os.path.getsize(mypath)
+					"Ignore"
 	
 		pbar.finish()
 		print "Ended with %d files, %d unique hashes" % (len(self.reverseDict), len(self.hashDict))
@@ -426,8 +429,7 @@ def openOrBuildHashDict (variableName, searchPath):
 
 
 
-def checkForMissingInDest(sourceHashDict, destHashDict, dry_run=False, act=False, exclude="", collision_ext = ".remote"):
-	global destDir
+def checkForMissingInDest(sourceHashDict, destHashDict, dry_run=False, act=False, exclude="", collision_ext = ".remote", destSubDir=""):
 
 	foundMissing = [] 
 
@@ -449,7 +451,7 @@ def checkForMissingInDest(sourceHashDict, destHashDict, dry_run=False, act=False
 				#	raise NameError ("Not yet supported")
 				#pathParts.insert(0, destHashDict.rootPath) # put the dest dir in front
 				sourcePath = os.path.join(sourceHashDict.rootPath, val[0])
-				destPath = os.path.join(destHashDict.rootPath, val[0])
+				destPath = os.path.join(destHashDict.rootPath, destSubDir, val[0])
 
 				print "Copying '%s' -> '%s'" % (sourcePath, destPath)
 
