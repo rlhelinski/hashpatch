@@ -3,8 +3,7 @@
 # TODO store directory size in HashMap class. Maintain it through add and del operations
 #
 
-import re, hashlib, os, sys, base64, pickle, itertools, shutil
-
+import re, hashlib, os, sys, base64, pickle, itertools, shutil, sys
 import progressbar
 
 shaFieldSep = "  "
@@ -294,6 +293,7 @@ class hashMap:
 		if (filePath != None):
 			self.savePath = filePath
 		print "Loading file '%s'," % self.savePath,
+		sys.stdout.flush()
 
 		if (self.savePath.endswith(bz2ext)):
 			import bz2
