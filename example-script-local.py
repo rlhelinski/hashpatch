@@ -5,6 +5,7 @@ localHashMap.update()
 
 remoteHashMap = hashpatch.hashMap('/Volumes/ryan/Pictures')
 
+
 #hashpatch.deleteDupsInDest(remoteHashMap, localHashMap)
-hashpatch.checkForMissingInDest(localHashMap, remoteHashMap, act=False)
+hashpatch.checkForMissingInDest(localHashMap, remoteHashMap, destSubDir='iPhoto', act=False)
 
