@@ -73,8 +73,7 @@ class hashMap:
 	def __len__(self):
 		"""Returns the number of files, including duplicates"""
 		#return (len(self.hashDict))
-		# should be equal to 
-		sum(map(len, self.hashDict))
+		# should be equal to sum(map(len, self.hashDict))
 		return (len(self.reverseDict))
 
 	def __repr__(self):
@@ -429,7 +428,7 @@ def openOrBuildHashDict (variableName, searchPath):
 
 
 
-def checkForMissingInDest(sourceHashDict, destHashDict, dry_run=False, act=False, exclude="", collision_ext = ".remote", destSubDir=""):
+def checkForMissingInDest(sourceHashDict, destHashDict, dry_run=False, act=True, exclude="", collision_ext = ".remote", destSubDir=""):
 
 	foundMissing = [] 
 
