@@ -176,7 +176,7 @@ class hashMap:
 	def check(self):
 		"""Verify all the hashes"""
 
-		widgets = ["Progress: ", progressbar.Bar(marker="=", left="[", right="]"), " ", progressbar.Fraction(), " ", progressbar.Percentage() ]
+		widgets = ["Progress: ", progressbar.Bar(marker="=", left="[", right="]"), " ", progressbar.Fraction(), " ", progressbar.Percentage(), " ", progressbar.ETA() ]
 		pbar = progressbar.ProgressBar(widgets=widgets, maxval=len(self))
 		success = True
 
