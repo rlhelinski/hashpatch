@@ -332,6 +332,8 @@ class hashMap:
 		if (os.path.isfile(self.savePath)):
                         fileBaseName = os.path.basename(self.rootPath)
                         fileExtension = sha512ext
+                        if (compress or self.savePath.endswith(bz2ext)):
+                            fileExtension += '.'+bz2ext
 			backupPath = os.path.join(os.path.dirname(self.savePath),
 				'.'+fileBaseName+
                                 '-'+("%d" % os.stat(self.savePath).st_mtime)+
