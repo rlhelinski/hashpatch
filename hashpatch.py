@@ -39,6 +39,8 @@ def getDirSize(path):
 class hashMap:
 	# Variables declared here are class-static
 
+        widgets = ["Progress: ", progressbar.Bar(marker="=", left="[", right="]"), " ", progressbar.Fraction(), " ", progressbar.Percentage(), " ", progressbar.ETA() ]
+
 	def __init__(self, rootPath="", sourceFile="", excludePattern=".*\.svn.*"):
 		self.rootPath = ""
 		self.hashDict = dict()
@@ -176,7 +178,6 @@ class hashMap:
 	def check(self):
 		"""Verify all the hashes"""
 
-		widgets = ["Progress: ", progressbar.Bar(marker="=", left="[", right="]"), " ", progressbar.Fraction(), " ", progressbar.Percentage(), " ", progressbar.ETA() ]
 		pbar = progressbar.ProgressBar(widgets=widgets, maxval=len(self))
 		success = True
 
@@ -207,8 +208,6 @@ class hashMap:
 
 		print "Determining directory size..."
 		dirSize = getDirSize(self.rootPath)
-		#widgets = ["Progress: ", progressbar.Bar(marker="=", left="[", right="]"), " ", progressbar.Percentage() ]
-		widgets = ["Progress: ", progressbar.Bar(marker="=", left="[", right="]"), " ", progressbar.Fraction(human=True), " ", progressbar.Percentage() ]
 		pbar = progressbar.ProgressBar(widgets=widgets, maxval=dirSize)
 
 		if expand:
