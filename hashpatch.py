@@ -178,7 +178,7 @@ class hashMap:
     def check(self):
         """Verify all the hashes"""
 
-        pbar = progressbar.ProgressBar(widgets=widgets, maxval=len(self))
+        pbar = progressbar.ProgressBar(widgets=self.widgets, maxval=len(self))
         success = True
 
         pbar.start()
@@ -208,7 +208,7 @@ class hashMap:
 
         print "Determining directory size..."
         dirSize = getDirSize(self.rootPath)
-        pbar = progressbar.ProgressBar(widgets=widgets, maxval=dirSize)
+        pbar = progressbar.ProgressBar(widgets=self.widgets, maxval=dirSize)
 
         if expand:
             print "Only checking for new files in existing hash map with %d files" % len(self)
@@ -487,24 +487,27 @@ def deleteDupsInDest (sourceMap, destMap, act=False, prompt=False, verbose=False
         if (key in sourceMap.hashDict):
 
             for path in val:
-                path = os.path.join(destMap.rootPath, path)
-                if (os.path.getsize(path) == 0):
-                    # If it's an empty file?
-                    continue
-                foundDup += 1
-                foundSize += os.path.getsize(path)
-                print "%s duplicate of '%s' at '%s' (%s)" % ("Removing" if act else "Found", sourceMap.hashDict[key][0], path, progressbar.humanize_bytes(os.path.getsize(path)))
-                if (verbose):
-                    print "Matches: " + str(sourceMap.hashDict[key])
-                if act:
-                    if (prompt):
-                        print "OK? ",
-                    if (not prompt or sys.stdin.readline().lower().startswith('y')):
-                        os.remove(path)
-                        # delete the parent directory if it is empty
-                        if (not os.listdir(os.path.dirname(path))):
-                            # This is a function that recursively removes empty directories
-                            os.removedirs(os.path.dirname(path))
+                try:
+                    path = os.path.join(destMap.rootPath, path)
+                    if (os.path.getsize(path) == 0):
+                        # If it's an empty file?
+                        continue
+                    foundDup += 1
+                    foundSize += os.path.getsize(path)
+                    print "%s duplicate of '%s' at '%s' (%s)" % ("Removing" if act else "Found", sourceMap.hashDict[key][0], path, progressbar.humanize_bytes(os.path.getsize(path)))
+                    if (verbose):
+                        print "Matches: " + str(sourceMap.hashDict[key])
+                    if act:
+                        if (prompt):
+                            print "OK? ",
+                        if (not prompt or sys.stdin.readline().lower().startswith('y')):
+                            os.remove(path)
+                            # delete the parent directory if it is empty
+                            if (not os.listdir(os.path.dirname(path))):
+                                # This is a function that recursively removes empty directories
+                                os.removedirs(os.path.dirname(path))
+                except OSError as e:
+                    print "File vanished: " + str(e)
 
     print "%s %d duplicate files (%s) in destination" % ("Deleted" if act else "Found", foundDup, progressbar.humanize_bytes(foundSize))
     #rf.close()
