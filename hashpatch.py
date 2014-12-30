@@ -386,6 +386,15 @@ class hashMap:
                 newMap._addFile(fileHash=key, filePath=path)
         return newMap
 
+    def deleteDupesStartingWith(self, prefix):
+        for key, val in self.hashDict.items():
+            if len(val) > 1:
+                for path in val:
+                    if path.startswith(prefix):
+                        assert sum([s.startswith(prefix) for s in val]) == 1
+                        print 'rm %s' % path
+                        os.unlink(os.path.join(self.rootPath, path))
+                        self._delFile(path)
 
 
 ################################################################################
