@@ -50,8 +50,8 @@ class hashMap:
         if (rootPath != ""):
             if (os.path.isdir(rootPath)):
                 self.rootPath = rootPath.rstrip("/")
-                self.savePath = os.path.join(os.path.dirname(self.rootPath),
-                        '.'+os.path.basename(self.rootPath)+'.'+sha512ext)
+                self.savePath = os.path.join(self.rootPath,
+                        '.hashpatch.'+sha512ext)
                     #'.'.join([os.path.basename(self.rootPath), int(time.time()), sha512ext]))
             else:
                 raise NameError("Root path given is not a directory")
@@ -237,7 +237,12 @@ class hashMap:
                     #continue
 
                 mypath = os.path.join(root, filename)
+                # Skip if this path is a directory or special file
                 if not os.path.isfile(mypath):
+                    continue
+
+                # Don't include hashpatch files
+                if filename.startswith('.hashpatch'):
                     continue
 
                 try:
@@ -334,8 +339,7 @@ class hashMap:
             if (compress or self.savePath.endswith(bz2ext)):
                 fileExtension += '.'+bz2ext
             backupPath = os.path.join(os.path.dirname(self.savePath),
-                    '.'+fileBaseName+
-                    '-'+("%d" % os.stat(self.savePath).st_mtime)+
+                    '.hashpatch-'+("%d" % os.stat(self.savePath).st_mtime)+
                     '.'+fileExtension)
             print "Backing up existing file to '%s'" % backupPath
             shutil.copy2(self.savePath, backupPath)
