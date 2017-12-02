@@ -19,8 +19,11 @@ setup(
     license = "BSD",
     keywords = "checksum file duplicate synchronize",
     url = "https://github.com/rlhelinski/hashpatch",
-    py_modules=['progressbar', 'hashpatch'],
+    py_modules=['hashpatch'],
     long_description=read('README.md'),
+    install_requires=[
+        'progressbar==2.2'
+    ],
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Topic :: Utilities",
