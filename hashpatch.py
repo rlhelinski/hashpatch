@@ -68,6 +68,21 @@ def check_resp_valid(response, num_dupes):
     return True
 
 
+
+class DupeRecord(object):
+    """
+    A collection of data about a duplicate file
+    """
+    def __init__(self, key, file_size, num_dupes):
+        self.key = key
+        self.file_size = file_size
+        self.num_dupes = num_dupes
+
+    def __str__(self):
+        return ' '.join([self.key, self.file_size, self.num_dupes])
+
+
+
 class HashMap(object):
     """
     HashMap builds a dictionary mapping file hashes to lists of file paths in a
@@ -242,9 +257,6 @@ class HashMap(object):
             pbar.increment()
         pbar.finish()
         return success
-
-
-
 
     def build(self, include_pattern=False, exclude_pattern=False, expand=False, verbose=False):
         """Build a hash dict object for files in a path"""
@@ -713,15 +725,3 @@ def make_missing_report(backup_basename, backup_map, missing_files):
         else:
             print 'OK: ' + backup_map.hash_dict[key][0] + \
                 ((' and %d others' % num_exist) if num_exist > 1 else '')
-
-class DupeRecord(object):
-    """
-    A collection of data about a duplicate file
-    """
-    def __init__(self, key, file_size, num_dupes):
-        self.key = key
-        self.file_size = file_size
-        self.num_dupes = num_dupes
-
-    def __str__(self):
-        return ' '.join([self.key, self.file_size, self.num_dupes])
