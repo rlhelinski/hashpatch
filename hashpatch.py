@@ -215,7 +215,8 @@ class HashMap(object):
 
         for path, key in self.reverse_dict.items():
             if not path.startswith(long_path):
-                raise NameError('This was meant to be used to shorten the beginning of the path')
+                raise NameError('This was meant to be used to shorten '
+                                'the beginning of the path')
             new_path = path.replace(long_path, short_path)
             if act:
                 self.del_file_hash(path)
@@ -230,7 +231,7 @@ class HashMap(object):
         """
 
         self.remove_missing()
-        self.add_new()
+        self.add_missing()
         self.save()
 
     def check(self):
@@ -347,7 +348,7 @@ class HashMap(object):
                 self.del_file_hash(path)
         print 'Removed %d missing files' % (init_num - len(self.reverse_dict))
 
-    def add_new(self, include_pattern=False, verbose=False):
+    def add_missing(self, include_pattern=False, verbose=False):
         """Add files on filesystem that are missing in data structures"""
         self.build(include_pattern=include_pattern, expand=True, verbose=verbose)
 
@@ -532,7 +533,7 @@ def show_unequal_files(dup_table):
                 break
 
 def check_for_missing_in_dest(
-        source, dest, dry_run=False, act=True,
+        source, dest, act=True,
         exclude='', collision_ext='.remote', dest_subdir=''):
     """
     Copy files from source that are missing in dest
@@ -541,12 +542,12 @@ def check_for_missing_in_dest(
     found_missing = []
 
     for key, path_list in source.hash_dict.items():
-        if (exclude != '') and (exclude in path_list[0]):
+        if exclude and (exclude in path_list[0]):
             continue
         if key not in dest.hash_dict:
             found_missing.append(key)
 
-            if dry_run or act:
+            if act:
                 # path_list[0] gets the first one if there are more than one copy of the file
                 #pathParts = os.path.dirname(path_list[0]).split('/')
                 #popped = pathParts.pop(0) # delete the first dir
@@ -590,41 +591,39 @@ def delete_dups_in_dest(source, dest, act=False, prompt=False,
     found_dup = 0
     found_size = 0
 
-    for key, val in dest.hash_dict.items():
-        if key in source.hash_dict:
+    for key, path_list in dest.hash_dict.items():
+        if key not in source.hash_dict:
+            continue
 
-            for rel_path in val:
-                try:
-                    path = os.path.join(dest.root_path, rel_path)
-                    if not os.path.isfile(path):
-                        print '"%s" does not exist' % path
+        for rel_path in path_list:
+            path = os.path.join(dest.root_path, rel_path)
+            if not os.path.isfile(path):
+                print '"%s" does not exist' % path
+                continue
+            if os.path.getsize(path) == 0:
+                # If it's an empty file?
+                continue
+            if min_size and os.stat(path).st_size < min_size:
+                continue
+            found_dup += 1
+            found_size += os.path.getsize(path)
+            print '%s duplicate of "%s" at "%s" (%s)' % (
+                'Removing' if act else 'Found',
+                source.hash_dict[key][0],
+                path,
+                progressbar.humanize_bytes(os.path.getsize(path)))
+            if verbose:
+                print 'Matches: ' + str(source.hash_dict[key])
+            if act:
+                if prompt:
+                    if not input('OK? ').lower().startswith('y'):
                         continue
-                    if os.path.getsize(path) == 0:
-                        # If it's an empty file?
-                        continue
-                    if min_size and os.stat(path).st_size < min_size:
-                        continue
-                    found_dup += 1
-                    found_size += os.path.getsize(path)
-                    print '%s duplicate of "%s" at "%s" (%s)' % (
-                        'Removing' if act else 'Found',
-                        source.hash_dict[key][0],
-                        path,
-                        progressbar.humanize_bytes(os.path.getsize(path)))
-                    if verbose:
-                        print 'Matches: ' + str(source.hash_dict[key])
-                    if act:
-                        if prompt:
-                            print 'OK? ',
-                        if not prompt or sys.stdin.readline().lower().startswith('y'):
-                            os.remove(path)
-                            # delete the parent directory if it is empty
-                            if not os.listdir(os.path.dirname(path)):
-                                # This is a function that recursively removes empty directories
-                                os.removedirs(os.path.dirname(path))
-                            dest.del_file_hash(rel_path)
-                except OSError as err:
-                    print 'File vanished as we were working ' + str(err)
+                os.remove(path)
+                # delete the parent directory if it is empty
+                if not os.listdir(os.path.dirname(path)):
+                    # recursively remove empty directories
+                    os.removedirs(os.path.dirname(path))
+                dest.del_file_hash(rel_path)
 
     print '%s %d duplicate files (%s) in destination' % (
         'Deleted' if act else 'Found',
