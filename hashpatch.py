@@ -17,6 +17,7 @@ import bz2
 import datetime
 import platform
 import progressbar
+from binascii import b2a_hex
 
 SHA_FIELD_SEP = '  '
 SHA512_EXT = 'sha512'
@@ -50,6 +51,9 @@ def get_dir_size(path):
                     pass # this is just an estimation
     return dir_size
 
+def format_hash(hash_str, trunc_len=8):
+    return b2a_hex(hash_str)[:trunc_len]
+
 def check_resp_valid(response, num_dupes):
     """
     Check if a user response is valid
@@ -79,7 +83,7 @@ class DupeRecord(object):
         self.num_dupes = num_dupes
 
     def __str__(self):
-        return ' '.join([self.key, self.file_size, self.num_dupes])
+        return ' '.join([format_hash(self.key), self.file_size, self.num_dupes])
 
 
 
@@ -343,7 +347,9 @@ class HashMap(object):
         init_num = len(self.reverse_dict)
         for path in self.reverse_dict:
             if not os.path.exists(os.path.join(self.root_path, path)):
-                print '"%s" is missing' % (path)
+                print '"%s" is missing with %d other copies' % (
+                    path,
+                    len(self.hash_dict[self.reverse_dict[path]])-1)
                 #remove the path from the list of paths
                 self.del_file_hash(path)
         print 'Removed %d missing files' % (init_num - len(self.reverse_dict))
