@@ -111,6 +111,7 @@ class HashMap(object):
         self.save_path = ''
 
         if root_path != '':
+            root_path = os.path.expanduser(root_path)
             if os.path.isdir(root_path):
                 self.root_path = root_path.rstrip('/')
                 self.save_path = os.path.join(self.root_path,
