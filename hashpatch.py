@@ -235,8 +235,9 @@ class HashMap(object):
         changes.
         """
 
-        self.remove_missing()
+# Add missing first so that duplicates of moved files are reported correctly
         self.add_missing()
+        self.remove_missing()
         self.save()
 
     def check(self):
@@ -346,7 +347,7 @@ class HashMap(object):
     def remove_missing(self):
         """Remove files referenced in the data structures that are missing on filesystem"""
         init_num = len(self.reverse_dict)
-        for path in self.reverse_dict:
+        for path in self.reverse_dict.copy():
             if not os.path.exists(os.path.join(self.root_path, path)):
                 print '"%s" is missing with %d other copies' % (
                     path,
@@ -390,7 +391,7 @@ class HashMap(object):
                 # ignore this entry in the input
 
         bz_file.close()
-        print '%d files' % len(self)
+        print '%d files, %d unique' % (len(self), len(self.hash_dict))
 
 # TODO implement dirty bit. Set when any change is made. Reset on save.
     def save(self, file_path=None, compress=True):
@@ -466,13 +467,14 @@ class HashMap(object):
         print 'Calculating file sizes...'
         space_hogs = []
         for key, paths in self.hash_dict.items():
+            path0 = os.path.join(self.root_path, paths[0])
             try:
-                size = os.path.getsize(paths[0])
+                size = os.path.getsize(path0)
                 space_hogs.append(
                     DupeRecord(key=key, file_size=size, num_dupes=len(paths)))
             except OSError:
-                print 'File "%s" is missing' % paths[0]
-                self.del_file_hash(paths[0])
+                print 'File "%s" is missing' % path0
+                self.del_file_hash(path0)
                 continue
         space_hogs = sorted(
             space_hogs,
@@ -482,11 +484,14 @@ class HashMap(object):
         for item in space_hogs:
             if dupes_only and item.num_dupes == 1:
                 continue
-            print ' '.join([
+            print '%s occupied in %d copies of size %s with hash %s...' % (
                 progressbar.humanize_bytes(item.num_dupes*item.file_size),
-                str(item.num_dupes),
+                item.num_dupes,
                 progressbar.humanize_bytes(item.file_size),
-                repr(self.hash_dict[item.key])])
+                format_hash(item.key)
+                )
+            for i, path in enumerate(self.hash_dict[item.key]):
+                print '%5d: "%s"' % (i, path)
 
 
             while True:
