@@ -101,7 +101,7 @@ class HashMap(object):
     # Variables declared here are class-static
     widgets = ['Progress: ',
                progressbar.Bar(marker='=', left='[', right=']'), ' ',
-               progressbar.Fraction(), ' ',
+               progressbar.SimpleProgress(), ' ',
                progressbar.Percentage(), ' ', progressbar.ETA()]
 
     def __init__(self, root_path='', sourceFile='', exclude_pattern=r'.*\.svn.*'):
@@ -265,13 +265,15 @@ class HashMap(object):
         pbar.finish()
         return success
 
-    def build(self, include_pattern=False, exclude_pattern=False, expand=False, verbose=False):
+    def build(self, include_pattern=False, exclude_pattern=False,
+        expand=False, verbose=False):
         """Build a hash dict object for files in a path"""
 
         print 'Determining directory size...'
 # TODO add a dict that maps paths to sizes to this class and a method that
 # populates this dict
         dir_size = get_dir_size(self.root_path)
+        checked_size = 0
         pbar = progressbar.ProgressBar(widgets=self.widgets, maxval=dir_size)
 
         if expand:
@@ -312,7 +314,8 @@ class HashMap(object):
                     continue
 
                 try:
-                    pbar.increment(os.path.getsize(mypath))
+                    checked_size += os.path.getsize(mypath)
+                    pbar.update(checked_size)
 
                     # If we are expanding and this path is anywhere in the dictionary,
                     # do not update the hash
@@ -485,9 +488,9 @@ class HashMap(object):
             if dupes_only and item.num_dupes == 1:
                 continue
             print '%s occupied in %d copies of size %s with hash %s...' % (
-                progressbar.humanize_bytes(item.num_dupes*item.file_size),
+                item.num_dupes*item.file_size,
                 item.num_dupes,
-                progressbar.humanize_bytes(item.file_size),
+                item.file_size,
                 format_hash(item.key)
                 )
             for i, path in enumerate(self.hash_dict[item.key]):
@@ -623,7 +626,7 @@ def delete_dups_in_dest(source, dest, act=False, prompt=False,
                 'Removing' if act else 'Found',
                 source.hash_dict[key][0],
                 path,
-                progressbar.humanize_bytes(os.path.getsize(path)))
+                os.path.getsize(path))
             if verbose:
                 print 'Matches: ' + str(source.hash_dict[key])
             if act:
@@ -640,7 +643,7 @@ def delete_dups_in_dest(source, dest, act=False, prompt=False,
     print '%s %d duplicate files (%s) in destination' % (
         'Deleted' if act else 'Found',
         found_dup,
-        progressbar.humanize_bytes(found_size))
+        found_size)
     dest.save()
 
 def delete_broken_links(path, act=False):
