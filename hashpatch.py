@@ -258,10 +258,10 @@ class HashMap(object):
             else:
                 myhash = hash_chunk_file(hashlib.sha512, mypath)
             if key != myhash.digest():
-                print 'Checksum failed: "%s": "%s" != "%s"' % (
+                print 'Checksum failed: "%s": %s != %s' % (
                     mypath, base64.b16encode(key).lower(), myhash.hexdigest())
                 success = False
-            pbar.increment()
+            pbar.increment(1)
         pbar.finish()
         return success
 
@@ -509,8 +509,24 @@ class HashMap(object):
                         'symbolic links\n'
 
                 response = sys.stdin.readline()
-                if check_resp_valid(response.strip(), item.num_dupes):
-                    print 'Response not recognized'
+                if resp.startswith('k'):
+                    try:
+                        select_index = int(resp[1:])
+                    except ValueError as e:
+                        print (str(e))
+                    for i, path in enumerate(self.hash_dict[item.key]):
+                        if i!=select_index:
+                            print 'Deleting "%s"' % path
+                if (platform.system() != 'Windows') and \
+                    resp.startswith('l'):
+                    try:
+                        select_index = int(resp[1:])
+                    except ValueError as e:
+                        print (str(e))
+                    for i, path in enumerate(self.hash_dict[item.key]):
+                        if i!=select_index:
+                            print 'Replace "%s" with link to "%s"' % (path, self.hash_dict[item.key][select_index])
+                else:
                     break
 
             #responseCodes = dict( zip( map(lambda x: 'k%d' % x, range(item.num_dupes)), ) )
@@ -631,7 +647,7 @@ def delete_dups_in_dest(source, dest, act=False, prompt=False,
                 print 'Matches: ' + str(source.hash_dict[key])
             if act:
                 if prompt:
-                    if not input('OK? ').lower().startswith('y'):
+                    if not raw_input('OK? ').lower().startswith('y'):
                         continue
                 os.remove(path)
                 # delete the parent directory if it is empty
