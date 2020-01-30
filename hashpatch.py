@@ -617,20 +617,40 @@ def check_for_missing_in_dest(
     print '%s %d missing files in destination' % ('Copied' if act else 'Found', len(found_missing))
     return found_missing
 
-def delete_dups_in_dest(source, dest, act=False, prompt=False,
-                        verbose=False, min_size=None):
+def delete_dupes_in_dest(source, dest, act=False, prompt=False,
+                        verbose=False, min_size=1,
+                        include=None, exclude=None):
     """
     Delete files in dest HashMap that are duplicates of files in source
     HashMap.
     """
     found_dup = 0
     found_size = 0
+    assert isinstance(min_size, int)
 
     for key, path_list in dest.hash_dict.items():
         if key not in source.hash_dict:
             continue
 
         for rel_path in path_list:
+            if exclude:
+                skip=False
+                for exclude_pattern in exclude:
+                    if exclude_pattern in rel_path:
+                        skip=True
+                        break
+                if skip:
+                    continue
+
+            if include:
+                skip=True
+                for include_pattern in include:
+                    if include_pattern in rel_path:
+                        skip=False
+                        break
+                if skip:
+                    continue
+
             path = os.path.join(dest.root_path, rel_path)
             if not os.path.isfile(path):
                 print '"%s" does not exist' % path
@@ -638,7 +658,7 @@ def delete_dups_in_dest(source, dest, act=False, prompt=False,
             if os.path.getsize(path) == 0:
                 # If it's an empty file?
                 continue
-            if min_size and os.stat(path).st_size < min_size:
+            if os.stat(path).st_size < min_size:
                 continue
             found_dup += 1
             found_size += os.path.getsize(path)
@@ -664,7 +684,8 @@ def delete_dups_in_dest(source, dest, act=False, prompt=False,
         'Deleted' if act else 'Found',
         found_dup,
         found_size)
-    dest.save()
+    if act:
+        dest.save()
 
 def delete_broken_links(path, act=False):
     """
