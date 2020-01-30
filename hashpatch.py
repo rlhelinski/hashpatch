@@ -288,7 +288,11 @@ class HashMap(object):
 
         pbar.start()
         #pnum = pden = 0
-        for root, _, files in os.walk(self.root_path):
+        for root, dirnames, files in os.walk(self.root_path):
+            dirnames[:] = [
+                    dir for dir in dirnames
+                    if not os.path.ismount(os.path.join(root, dir))]
+
             if include_pattern and not include_matcher.match(root):
                 continue
             if exclude_pattern and exclude_matcher.match(root):
