@@ -189,18 +189,46 @@ class HashMap(object):
         #print ''
         return self
 
-    def find_by_pattern(self, pattern, action=False, options=re.IGNORECASE):
-        """File file paths using a pattern."""
+    def del_file(self, path):
+        file_hash = self.reverse_dict[path]
+# the golden rule of duplicate removal is: never go below 1 copies!
+        if len(self.hash_dict[file_hash]) < 2:
+            raise Exception('Attempt to delete with only one copy of '+file_path+' remaining!')
+        print 'Deleting "%s"' % path
+        os.unlink(os.path.join(self.root_path, path))
+        self.del_file_hash(path)
+
+    def del_all_in_group_except_path(self, keep_path):
+        group_hash = self.reverse_dict[keep_path]
+        group_paths = self.hash_dict[group_hash]
+
+        for path in group_paths:
+            if path != keep_path:
+                self.del_file(path)
+
+    def find_by_pattern(self, pattern, action=None, options=re.IGNORECASE):
+        """Find file paths using a pattern."""
         file_matcher = re.compile(pattern, options)
         match_count = 0
-        for file_path in self.reverse_dict:
+        pbar = progressbar.ProgressBar(widgets=self.widgets, maxval=len(self.reverse_dict))
+        pbar.start()
+        for path_i, (file_path, file_hash) in enumerate(self.reverse_dict.items()):
             if file_matcher.match(file_path):
-                print '"%s" matches' % file_path
+                #print '"%s" matches' % file_path
                 match_count += 1
                 if action == 'delete':
-                    self.del_file_hash(file_path)
-
+                    if len(self.hash_dict[file_hash]) == 1:
+                        print ('Only one copy of '+file_path+' remaining')
+                    else:
+                        print('Path '+file_path+' matches with %d other copies' % (len(self.hash_dict[file_hash])-1))
+                        self.del_file(file_path)
+                else:
+                    print('Path '+file_path+' matches')
+            pbar.update(path_i)
+        pbar.finish()
         print 'Found %d matches' % match_count
+        if action:
+            self.save()
 
     def find_by_path(self, search_path):
         """Find the hash of a file based on its path"""
@@ -451,44 +479,138 @@ class HashMap(object):
                 sub.add_file_hash(file_hash=key, file_path=path)
         return sub
 
-    def delete_dupes_starting_with(self, prefix):
+    def filter_paths_prefix(self, path_list, prefix):
+        return [path for path in path_list if path.startswith(prefix)]
+
+
+    def delete_dupes_starting_with(self, prefix, act=False):
         """
         Delete duplicates in this HashMap beginning with the specified prefix.
         """
-        for val in self.hash_dict.values():
-            if len(val) > 1:
-                for path in val:
-                    if path.startswith(prefix):
-                        assert sum([s.startswith(prefix) for s in val]) == 1
-                        print 'rm %s' % path
-                        os.unlink(os.path.join(self.root_path, path))
-                        self.del_file_hash(path)
+        rm_cnt = 0
+        for dup_hash, path_list in self.hash_dict.items():
+# are there duplicates of this hash?
+            if len(path_list) == 1:
+                continue
+            paths_under_prefix = self.filter_paths_prefix(path_list, prefix)
+# are there any paths for this hash under the prefix?
+            if len(paths_under_prefix) == 0:
+                continue
+# are all the duplicates of this hash under the prefix?
+            if len(paths_under_prefix) == len(path_list):
+                print('All %d paths for hash %s are below the prefix' % (len(path_list), format_hash(dup_hash)))
+                continue
+# print debug info
+            print('hash: '+format_hash(dup_hash))
+            for path in path_list:
+                print('\t'+path)
+# remove all paths under the prefix for this hash
+            for path in paths_under_prefix:
+                print 'Removing %s' % path
+                rm_cnt += 1
+                if act:
+                    self.del_file(path)
+        print(('Removed' if act else 'Would remove') +' %d files' % rm_cnt)
+        if act:
+            self.save()
 
-    def find_dupes(self, dupes_only=True):
+    def delete_dupes_keep_longest_path(self, prefix=None, act=False, prompt=False):
+        """
+        Delete duplicates in this HashMap not under the longest directory name
+        """
+        rm_cnt = 0
+        for dup_hash, path_list in self.hash_dict.items():
+            if prefix:
+                path_list = self.filter_paths_prefix(path_list, prefix)
+# are there duplicates of this hash?
+            if len(path_list) < 2:
+                continue
+            dir_names = [os.path.dirname(path) for path in path_list]
+# is there one dir name that is longer than the rest?
+            dir_name_lens = [len(name) for name in dir_names]
+            longest_len = max(dir_name_lens)
+            longest_len_indices = [i for i, dir_name_len in enumerate(dir_name_lens) if dir_name_len==longest_len]
+            print('debug ', dir_names, longest_len, longest_len_indices)
+            if len(longest_len_indices) > 1:
+                print('More than one dir name with longest length')
+                continue
+# print debug info
+            print('hash: '+format_hash(dup_hash))
+            for path in path_list:
+                print('\t'+path)
+# remove all paths under the prefix for this hash
+            rm_cnt += len(path_list) - 1
+            keep_path = path_list[longest_len_indices[0]]
+            print 'Removing all except "%s"' % keep_path
+            if act:
+                if prompt and not raw_input('OK? ').lower().startswith('y'):
+                    continue
+                self.del_all_in_group_except_path(keep_path)
+        print(('Removed' if act else 'Would remove') +' %d files' % rm_cnt)
+        if act:
+            self.save()
+
+    def delete_dupes_keep_first_path(self, prefix=None, act=False, prompt=False):
+        rm_cnt = 0
+        for dup_hash, path_list in self.hash_dict.items():
+            if prefix:
+                path_list = self.filter_paths_prefix(path_list, prefix)
+# are there duplicates of this hash?
+            if len(path_list) < 2:
+                continue
+            sorted_paths = sorted(path_list)
+# print debug info
+            print('hash: '+format_hash(dup_hash))
+            for path in sorted_paths:
+                print('\t'+path)
+# remove all paths under the prefix for this hash
+            rm_cnt += len(sorted_paths) - 1
+            keep_path = sorted_paths[0]
+            print 'Removing all except "%s"' % keep_path
+            if act:
+                if prompt and not raw_input('OK? ').lower().startswith('y'):
+                    continue
+                self.del_all_in_group_except_path(keep_path)
+        print(('Removed' if act else 'Would remove') +' %d files' % rm_cnt)
+        if act:
+            self.save()
+
+
+    def get_file_sizes(self):
+        print 'Calculating file sizes...'
+        space_hogs = []
+        pbar = progressbar.ProgressBar(widgets=self.widgets, maxval=len(self.hash_dict))
+        pbar.start()
+        for key_i, (key, paths) in enumerate(self.hash_dict.items()):
+            path0 = os.path.join(self.root_path, paths[0])
+            try:
+                size = os.path.getsize(path0)
+            except OSError:
+                print 'File "%s" is missing' % path0
+                #self.del_file_hash(path0)
+                continue
+            else:
+                space_hogs.append(
+                    DupeRecord(key=key, file_size=size, num_dupes=len(paths)))
+            pbar.update(key_i)
+        pbar.finish()
+        return space_hogs
+
+    def find_dupes(self, file_sizes, dupes_only=True):
         """
         An interactive routine similar to 'dupseek.pl' which implements a
         greedy algorithm, pointing out the duplicate groups using the most
         space.
         """
         # need to sort by size multiplied by number of duplicates
-        print 'Calculating file sizes...'
-        space_hogs = []
-        for key, paths in self.hash_dict.items():
-            path0 = os.path.join(self.root_path, paths[0])
-            try:
-                size = os.path.getsize(path0)
-                space_hogs.append(
-                    DupeRecord(key=key, file_size=size, num_dupes=len(paths)))
-            except OSError:
-                print 'File "%s" is missing' % path0
-                self.del_file_hash(path0)
-                continue
-        space_hogs = sorted(
-            space_hogs,
+        file_sizes = sorted(
+            file_sizes,
             key=lambda record: record.num_dupes * record.file_size,
             reverse=True)
 
-        for item in space_hogs:
+        pbar = progressbar.ProgressBar(widgets=self.widgets, maxval=len(self.hash_dict))
+        pbar.start()
+        for group_i, item in enumerate(file_sizes):
             if dupes_only and item.num_dupes == 1:
                 continue
             print '%s occupied in %d copies of size %s with hash %s...' % (
@@ -497,7 +619,8 @@ class HashMap(object):
                 item.file_size,
                 format_hash(item.key)
                 )
-            for i, path in enumerate(self.hash_dict[item.key]):
+            sorted_paths = sorted(self.hash_dict[item.key])
+            for i, path in enumerate(sorted_paths):
                 print '%5d: "%s"' % (i, path)
 
 
@@ -513,28 +636,30 @@ class HashMap(object):
                         'symbolic links\n'
 
                 response = sys.stdin.readline()
-                if resp.startswith('k'):
+                if response.startswith('k'):
                     try:
-                        select_index = int(resp[1:])
+                        select_index = int(response[1:])
                     except ValueError as e:
                         print (str(e))
-                    for i, path in enumerate(self.hash_dict[item.key]):
-                        if i!=select_index:
-                            print 'Deleting "%s"' % path
+                    else:
+                        self.del_all_in_group_except_path(sorted_paths[select_index])
                 if (platform.system() != 'Windows') and \
-                    resp.startswith('l'):
+                    response.startswith('l'):
                     try:
-                        select_index = int(resp[1:])
+                        select_index = int(response[1:])
                     except ValueError as e:
                         print (str(e))
-                    for i, path in enumerate(self.hash_dict[item.key]):
+                    for i, path in enumerate(sorted_paths):
                         if i!=select_index:
-                            print 'Replace "%s" with link to "%s"' % (path, self.hash_dict[item.key][select_index])
+                            print '(not implemented) Replace "%s" with link to "%s"' % (path, sorted_paths[select_index])
+                if response.startswith('q'):
+                    return
                 else:
                     break
 
-            #responseCodes = dict( zip( map(lambda x: 'k%d' % x, range(item.num_dupes)), ) )
-                    #sys.stdin.readline().lower().startswith('y')
+            pbar.update(group_i)
+        pbar.finish()
+        self.save()
 
 ################################################################################
 # Utility functions
