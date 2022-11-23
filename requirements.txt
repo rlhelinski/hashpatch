@@ -1,1 +1,2 @@
--e .
+progressbar2
+setuptools~=60.2.0
