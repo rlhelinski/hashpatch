@@ -15,23 +15,8 @@ BZ2_EXT_LIST = ['.bz2', '.bzip2']
 SHA_FIELD_SEP = '  '
 
 
-class HashMapCore:
-    """Associates one or more file paths with a unique signature
-    regardless of how this information is stored"""
-    def __init__(self, root_path, store_path=''):
-        self.root_path = root_path
-        self.store_path = store_path
-
-    def get_save_name(self):
-        return '.hashpatch'
-
-    def get_save_ext(self):
-        return ''
-
-
 def is_bzip2(path):
     return os.path.splitext(path)[1] in BZ2_EXT_LIST
-
 
 def hash_chunk_file(digest_fun, filename, chunk_size=4096):
     """
@@ -47,16 +32,27 @@ def hash_chunk_file(digest_fun, filename, chunk_size=4096):
     return d_obj
 
 
-hash_func = hashlib.sha256
+class HashMapCore:
+    """Associates one or more file paths with a unique signature
+    regardless of how this information is stored"""
+    def __init__(self, root_path, store_path=''):
+        self.root_path = root_path
+        self.store_path = store_path
+        self.hash_func = hashlib.sha256
 
+    def get_save_name(self):
+        return '.hashpatch'
 
-def compute_file_hash(filepath):
-    if os.path.islink(filepath):
-        filehash = hash_func(os.readlink(filepath).encode('utf-8'))
-    else:
-        filehash = hash_chunk_file(hash_func, filepath)
+    def get_save_ext(self):
+        return ''
 
-    return filehash.digest(), filepath
+    def compute_file_hash(self, filepath):
+        if os.path.islink(filepath):
+            filehash = self.hash_func(os.readlink(filepath).encode('utf-8'))
+        else:
+            filehash = hash_chunk_file(self.hash_func, filepath)
+
+        return filehash.digest(), filepath
 
 
 class CheckFileHashMap(HashMapCore):
@@ -65,19 +61,19 @@ class CheckFileHashMap(HashMapCore):
 
     def __init__(self, root_path):
         super().__init__(root_path)
-        self.hash_dict = defaultdict(list)
-        self.reverse_dict = dict()
+        self.hash_to_paths_dict = defaultdict(list)
+        self.path_to_hash_dict = dict()
         self.save_path = self.get_save_path()
         self.dirty = False
 
     def __len__(self):
         """Returns the total number of files, including duplicates"""
-        return len(self.reverse_dict)
+        return len(self.path_to_hash_dict)
 
     def __str__(self):
         """Represent as string, format conforms to 'shasum' output"""
         repr_str = ''
-        for key, val in self.hash_dict.items():
+        for key, val in self.hash_to_paths_dict.items():
             for path in val:
                 repr_str += base64.b16encode(key).lower() + SHA_FIELD_SEP + path + '\n'
 
@@ -93,11 +89,11 @@ class CheckFileHashMap(HashMapCore):
         else:
             self._compute_hashes()
 
-        logging.info('Loaded %d files; %d unique', len(self), len(self.hash_dict))
+        logging.info('Loaded %d files; %d unique', len(self), len(self.hash_to_paths_dict))
 
     def add_file_hash(self, raw_digest, file_path):
-        self.hash_dict[raw_digest].append(file_path)
-        self.reverse_dict[file_path] = raw_digest
+        self.hash_to_paths_dict[raw_digest].append(file_path)
+        self.path_to_hash_dict[file_path] = raw_digest
 
     def __load_from_file(self):
         """Load hashes from checksum file"""
@@ -116,7 +112,7 @@ class CheckFileHashMap(HashMapCore):
         logging.info('Computing hashes under directory "%s"', self.root_path)
         walker = DirectorySizeWalker(self.root_path)
         with Pool(cpu_count()) as p:
-            file_path_hashes = p.map(compute_file_hash, walker.walk())
+            file_path_hashes = p.map(self.compute_file_hash, walker.walk())
         self._digest_hash_tuples(file_path_hashes)
 
     def __load_file_lines(self, hash_file):

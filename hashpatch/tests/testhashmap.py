@@ -61,7 +61,7 @@ class FileSystemTest(RandomFileTest):
         self.assertEqual(len(self.map), self.num_files)
 
     def test_consistency(self):
-        self.assertEqual(len(self.map.reverse_dict), sum(map(len, self.map.hash_dict.values())))
+        self.assertEqual(len(self.map.path_to_hash_dict), sum(map(len, self.map.hash_to_paths_dict.values())))
 
 
 if __name__ == '__main__':
