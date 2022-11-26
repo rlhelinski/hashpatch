@@ -7,7 +7,7 @@ import logging
 import base64
 import os.path
 from os.path import isfile, join
-from progressbar import ProgressBar, UnknownLength
+from tqdm import tqdm
 from multiprocessing import Pool, cpu_count
 from collections import defaultdict
 
@@ -17,6 +17,7 @@ SHA_FIELD_SEP = '  '
 
 def is_bzip2(path):
     return os.path.splitext(path)[1] in BZ2_EXT_LIST
+
 
 def hash_chunk_file(digest_fun, filename, chunk_size=4096):
     """
@@ -39,6 +40,7 @@ class HashMapCore:
         self.root_path = root_path
         self.store_path = store_path
         self.hash_func = hashlib.sha256
+        self.max_threads = cpu_count()
 
     def get_save_name(self):
         return '.hashpatch'
@@ -75,9 +77,13 @@ class CheckFileHashMap(HashMapCore):
         repr_str = ''
         for key, val in self.hash_to_paths_dict.items():
             for path in val:
-                repr_str += base64.b16encode(key).lower() + SHA_FIELD_SEP + path + '\n'
+                repr_str += base64.b16encode(key).lower().decode('utf-8') \
+                            + SHA_FIELD_SEP + path + '\n'
 
         return repr_str
+
+    def __getitem__(self, raw_hash):
+        return self.hash_to_paths_dict[raw_hash]
 
     def get_save_path(self):
         return join(self.root_path, self.get_save_name() + self.get_save_ext())
@@ -87,7 +93,7 @@ class CheckFileHashMap(HashMapCore):
         if isfile(self.save_path):
             self.__load_from_file()
         else:
-            self._compute_hashes()
+            self.compute_hashes()
 
         logging.info('Loaded %d files; %d unique', len(self), len(self.hash_to_paths_dict))
 
@@ -104,16 +110,16 @@ class CheckFileHashMap(HashMapCore):
         with file_opener(self.save_path, 'r') as hash_file:
             self.__load_file_lines(hash_file)
 
-    def _digest_hash_tuples(self, file_paths_hashes):
-        for raw_digest, file_path in file_paths_hashes:
-            self.add_file_hash(raw_digest, file_path)
-
-    def _compute_hashes(self):
+    def compute_hashes(self):
         logging.info('Computing hashes under directory "%s"', self.root_path)
-        walker = DirectorySizeWalker(self.root_path)
-        with Pool(cpu_count()) as p:
-            file_path_hashes = p.map(self.compute_file_hash, walker.walk())
-        self._digest_hash_tuples(file_path_hashes)
+        walker = DirectoryWalker(self.root_path)
+        with Pool(self.max_threads) as pool:
+            imap = pool.imap_unordered(self.compute_file_hash, walker.walk())
+            pbar = tqdm(imap,
+                        total=walker.count_files(),
+                        unit=' files')
+            for raw_hash, filepath in pbar:
+                self.add_file_hash(raw_hash, filepath)
 
     def __load_file_lines(self, hash_file):
         line_num = 1
@@ -128,7 +134,6 @@ class CheckFileHashMap(HashMapCore):
 class DirectoryWalker:
     def __init__(self, root_path):
         self.root_path = root_path
-        self.pbar = ProgressBar(max_value=UnknownLength)
 
     def get_message(self):
         return f'Walking directory "{self.root_path}"'
@@ -142,7 +147,7 @@ class DirectoryWalker:
 
         return False
 
-    def _walk(self):
+    def walk(self):
         for root, dirnames, files in os.walk(self.root_path, topdown=True):
             dirnames[:] = [
                 dir for dir in dirnames
@@ -150,49 +155,11 @@ class DirectoryWalker:
 
             for filename in files:
                 filepath = os.path.join(root, filename)
-
                 if self.is_excluded(filename, filepath):
                     continue
 
-                yield root, filepath
+                yield filepath
 
-    def visit_file(self, filepath):
-        self.pbar.update(self.pbar.value + 1)
+    def count_files(self):
+        return len(list(self.walk()))
 
-    def walk(self):
-        print(self.get_message())
-
-        self.pbar.start()
-        for root, filepath in self._walk():
-            yield filepath
-            self.visit_file(filepath)
-
-        self.pbar.finish()
-
-
-class DirectorySizeWalker(DirectoryWalker):
-    """Walk a directory with progress based on the size of the files"""
-
-    def get_message(self):
-        return f'Determining size of directory "{self.root_path}"'
-
-    def count_file(self, filepath):
-        try:
-            filesize = os.path.getsize(filepath)
-        except (IOError, OSError) as error:
-            print(str(error) + ', skipping')
-            filesize = 0
-
-        return filesize
-
-    def visit_file(self, filepath):
-        self.pbar.update(self.pbar.value + self.count_file(filepath))
-
-    def walk(self):
-        self.pbar.max_value = 0
-        for root, filepath in self._walk():
-            self.pbar.max_value += self.count_file(filepath)
-
-        print(self.pbar.max_value)
-
-        yield from super().walk()

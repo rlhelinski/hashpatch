@@ -38,12 +38,6 @@ class DirectoryWalkerTest(RandomFileTest):
         self.assertEqual(len(result), self.num_files)
 
 
-class DirectorySizeWalkerTest(RandomFileTest):
-    def setUp(self):
-        super().setUp()
-        self.walker = hashpatch.DirectorySizeWalker(self.temp_dir)
-
-
 class FileSystemTest(RandomFileTest):
 
     def setUp(self):
