@@ -33,13 +33,24 @@ def hash_chunk_file(digest_fun, filename, chunk_size=4096):
     return d_obj
 
 
+class HashType:
+    pass
+
+
+class SHA256Type(HashType):
+    hash_func = hashlib.sha256
+    equiv_cmd = 'sha256sum'
+    raw_len = 32
+    hex_len = 64
+
+
 class HashMapCore:
     """Associates one or more file paths with a unique signature
     regardless of how this information is stored"""
     def __init__(self, root_path, store_path=''):
         self.root_path = root_path
         self.store_path = store_path
-        self.hash_func = hashlib.sha256
+        self.hash_type = SHA256Type
         self.max_threads = cpu_count()
 
     def get_save_name(self):
@@ -50,9 +61,9 @@ class HashMapCore:
 
     def compute_file_hash(self, filepath):
         if os.path.islink(filepath):
-            filehash = self.hash_func(os.readlink(filepath).encode('utf-8'))
+            filehash = self.hash_type.hash_func(os.readlink(filepath).encode('utf-8'))
         else:
-            filehash = hash_chunk_file(self.hash_func, filepath)
+            filehash = hash_chunk_file(self.hash_type.hash_func, filepath)
 
         return filehash.digest(), filepath
 
@@ -82,8 +93,11 @@ class CheckFileHashMap(HashMapCore):
 
         return repr_str
 
-    def __getitem__(self, raw_hash):
-        return self.hash_to_paths_dict[raw_hash]
+    def __getitem__(self, hash_in):
+        if len(hash_in) == self.hash_type.raw_len:
+            return self.hash_to_paths_dict[hash_in]
+        else:
+            return self.hash_to_paths_dict[base64.b16encode(hash_in)]
 
     def get_save_path(self):
         return join(self.root_path, self.get_save_name() + self.get_save_ext())
@@ -132,6 +146,7 @@ class CheckFileHashMap(HashMapCore):
 
 
 class DirectoryWalker:
+    """Generates a filtered list of file paths, relative to the root path"""
     def __init__(self, root_path):
         self.root_path = root_path
 
