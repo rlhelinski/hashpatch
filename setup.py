@@ -8,22 +8,23 @@ from setuptools import setup
 def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
+
 setup(
-    name = "hashpatch",
-    version = "0.1",
-    author = "Ryan Helinski",
-    author_email = "rlhelinski@gmail.com",
-    description = ("A Python module to update a remote copy, rearrange files "
-            "to a new structure, and delete duplicates, using simple sha1sum "
-            "files as storage"),
-    license = "BSD",
-    keywords = "checksum file duplicate synchronize",
-    url = "https://github.com/rlhelinski/hashpatch",
-    py_modules=['hashpatch'],
-    long_description=read('README.md'),
-    install_requires=[
-        'progressbar==2.2'
-    ],
+    name="hashpatch",
+    version="0.1",
+    author="Ryan Helinski",
+    author_email="rlhelinski@gmail.com",
+    description=(
+        "A Python module to update a remote copy, rearrange files "
+        "to a new structure, and delete duplicates, using simple sha1sum "
+        "files as storage"
+    ),
+    license="BSD",
+    keywords="checksum file duplicate synchronize",
+    url="https://github.com/rlhelinski/hashpatch",
+    py_modules=["hashpatch"],
+    long_description=read("README.md"),
+    install_requires=["progressbar==2.2"],
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Topic :: Utilities",

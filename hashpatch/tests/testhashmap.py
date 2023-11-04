@@ -8,13 +8,10 @@ from shutil import rmtree
 from os.path import join
 import hashpatch
 
-equiv_cmds = {
-    'openssl_sha256': 'sha256sum'
-}
+equiv_cmds = {"openssl_sha256": "sha256sum"}
 
 
 class RandomFileTest(TestCase):
-
     def setUp(self):
         """create files in a temporary directory, some duplicates"""
         self.num_files = 100
@@ -44,7 +41,6 @@ class DirectoryWalkerTest(RandomFileTest):
 
 
 class FileSystemTest(RandomFileTest):
-
     def setUp(self):
         super().setUp()
 
@@ -59,16 +55,21 @@ class FileSystemTest(RandomFileTest):
         self.assertEqual(len(self.map), self.num_files)
 
     def test_consistency(self):
-        self.assertEqual(len(self.map.path_to_hash_dict), sum(map(len, self.map.hash_to_paths_dict.values())))
+        self.assertEqual(
+            len(self.map.path_to_hash_dict),
+            sum(map(len, self.map.hash_to_paths_dict.values())),
+        )
 
     def test_file_output(self):
         hashpatch_checkfile_output = str(self.map)
-        hashpatch_checkfile_output = '\n'.join(sorted(hashpatch_checkfile_output.split('\n')))
+        hashpatch_checkfile_output = "\n".join(
+            sorted(hashpatch_checkfile_output.split("\n"))
+        )
         hashpatch_checkfile_output = hashpatch_checkfile_output.strip()
-        equiv_cmd = f'find {self.temp_dir} -type f -print0 | xargs -0 {equiv_cmds[self.map.hash_type.hash_func.__name__]} | sort'
+        equiv_cmd = f"find {self.temp_dir} -type f -print0 | xargs -0 {equiv_cmds[self.map.hash_type.hash_func.__name__]} | sort"
         equiv_cmd_output = subprocess.getoutput(equiv_cmd)
         self.assertEqual(hashpatch_checkfile_output, equiv_cmd_output)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

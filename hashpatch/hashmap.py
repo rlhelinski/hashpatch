@@ -11,8 +11,8 @@ from tqdm import tqdm
 from multiprocessing import Pool, cpu_count
 from collections import defaultdict
 
-BZ2_EXT_LIST = ['.bz2', '.bzip2']
-SHA_FIELD_SEP = '  '
+BZ2_EXT_LIST = [".bz2", ".bzip2"]
+SHA_FIELD_SEP = "  "
 
 
 def is_bzip2(path):
@@ -23,7 +23,7 @@ def hash_chunk_file(digest_fun, filename, chunk_size=4096):
     """
     Read a file in a series of chunks and compute an overall checksum.
     """
-    with open(filename, mode='rb') as f_obj:
+    with open(filename, mode="rb") as f_obj:
         d_obj = digest_fun()
         while True:
             buf = f_obj.read(chunk_size)
@@ -39,7 +39,7 @@ class HashType:
 
 class SHA256Type(HashType):
     hash_func = hashlib.sha256
-    equiv_cmd = 'sha256sum'
+    equiv_cmd = "sha256sum"
     raw_len = 32
     hex_len = 64
 
@@ -47,17 +47,18 @@ class SHA256Type(HashType):
 class HashMapCore:
     """Associates one or more file paths with a unique signature
     regardless of how this information is stored"""
-    def __init__(self, root_path, store_path=''):
+
+    def __init__(self, root_path, store_path=""):
         self.root_path = root_path
         self.store_path = store_path
         self.hash_type = SHA256Type
         self.max_threads = cpu_count()
 
     def get_save_name(self):
-        return '.hashpatch'
+        return ".hashpatch"
 
     def get_save_ext(self):
-        return ''
+        return ""
 
     def compute_file_hash(self, filepath):
         if os.path.islink(filepath):
@@ -85,11 +86,15 @@ class CheckFileHashMap(HashMapCore):
 
     def __str__(self):
         """Represent as string, format conforms to 'shasum' output"""
-        repr_str = ''
+        repr_str = ""
         for key, val in self.hash_to_paths_dict.items():
             for path in val:
-                repr_str += base64.b16encode(key).lower().decode('utf-8') \
-                            + SHA_FIELD_SEP + path + '\n'
+                repr_str += (
+                    base64.b16encode(key).lower().decode("utf-8")
+                    + SHA_FIELD_SEP
+                    + path
+                    + "\n"
+                )
 
         return repr_str
 
@@ -109,7 +114,9 @@ class CheckFileHashMap(HashMapCore):
         else:
             self.compute_hashes()
 
-        logging.info('Loaded %d files; %d unique', len(self), len(self.hash_to_paths_dict))
+        logging.info(
+            "Loaded %d files; %d unique", len(self), len(self.hash_to_paths_dict)
+        )
 
     def add_file_hash(self, raw_digest, file_path):
         self.hash_to_paths_dict[raw_digest].append(file_path)
@@ -121,7 +128,7 @@ class CheckFileHashMap(HashMapCore):
         logging.info('Loading file "%s"', self.save_path)
 
         file_opener = bz2.BZ2File if is_bzip2(self.store_path) else open
-        with file_opener(self.save_path, 'r') as hash_file:
+        with file_opener(self.save_path, "r") as hash_file:
             self.__load_file_lines(hash_file)
 
     def compute_hashes(self):
@@ -129,9 +136,7 @@ class CheckFileHashMap(HashMapCore):
         walker = DirectoryWalker(self.root_path)
         with Pool(self.max_threads) as pool:
             imap = pool.imap_unordered(self.compute_file_hash, walker.walk())
-            pbar = tqdm(imap,
-                        total=walker.count_files(),
-                        unit=' files')
+            pbar = tqdm(imap, total=walker.count_files(), unit=" files")
             for raw_hash, filepath in pbar:
                 self.add_file_hash(raw_hash, filepath)
 
@@ -147,6 +152,7 @@ class CheckFileHashMap(HashMapCore):
 
 class DirectoryWalker:
     """Generates a filtered list of file paths, relative to the root path"""
+
     def __init__(self, root_path):
         self.root_path = root_path
 
@@ -157,7 +163,7 @@ class DirectoryWalker:
         if not os.path.isfile(filepath):
             return True
 
-        if filename.startswith('.hashpatch'):
+        if filename.startswith(".hashpatch"):
             return True
 
         return False
@@ -165,8 +171,8 @@ class DirectoryWalker:
     def walk(self):
         for root, dirnames, files in os.walk(self.root_path, topdown=True):
             dirnames[:] = [
-                dir for dir in dirnames
-                if not os.path.ismount(os.path.join(root, dir))]
+                dir for dir in dirnames if not os.path.ismount(os.path.join(root, dir))
+            ]
 
             for filename in files:
                 filepath = os.path.join(root, filename)
@@ -177,4 +183,3 @@ class DirectoryWalker:
 
     def count_files(self):
         return len(list(self.walk()))
-
