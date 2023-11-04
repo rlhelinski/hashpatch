@@ -44,7 +44,7 @@ class SHA256Type(HashType):
     hex_len = 64
 
 
-class HashMapCore:
+class HashDirectory:
     """Associates one or more file paths with a unique signature
     regardless of how this information is stored"""
 
@@ -69,7 +69,7 @@ class HashMapCore:
         return filehash.digest(), filepath
 
 
-class CheckFileHashMap(HashMapCore):
+class CheckFileHashMap(HashDirectory):
     """Associates one or more file paths with a unique signature
     using checksum text or bzip2 files for storage"""
 
