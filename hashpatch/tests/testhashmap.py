@@ -20,10 +20,27 @@ class RandomFileTest(TestCase):
         self.file_size = 2**12
         seed(self.rand_seed)
 
-        self.temp_dir = mkdtemp(prefix='hashmap')
-        for i in range(self.num_files):
-            with open(join(self.temp_dir, 'file'+b2a_hex(randbytes(10)).decode()), 'wb') as f:
-                f.write(randbytes(self.file_size))
+        self.temp_dir = mkdtemp(prefix="hashmap")
+        for i in range(self.num_files - 2):
+            self.make_random_file(self.get_random_filename())
+
+        link_target = self.get_random_filename()
+        self.make_random_file(link_target)
+        link_filename = join(self.temp_dir, self.get_random_filename("link"))
+        os.symlink(link_target, link_filename, target_is_directory=False)
+
+        link_target = self.get_random_filename()
+        os.mkdir(join(self.temp_dir, link_target))
+        link_filename = join(self.temp_dir, self.get_random_filename("link"))
+        os.symlink(link_target, link_filename, target_is_directory=True)
+
+    def make_random_file(self, filename):
+        with open(join(self.temp_dir, filename), "wb") as f:
+            f.write(randbytes(self.file_size))
+        return filename
+
+    def get_random_filename(self, prefix="file"):
+        return prefix + b2a_hex(randbytes(10)).decode()
 
     def tearDown(self):
         """delete the files"""
