@@ -66,7 +66,7 @@ class FileSystemTest(RandomFileTest):
             sorted(hashpatch_checkfile_output.split("\n"))
         )
         hashpatch_checkfile_output = hashpatch_checkfile_output.strip()
-        equiv_cmd = f"find {self.temp_dir} -type f -print0 | xargs -0 {equiv_cmds[self.map.hash_type.hash_func.__name__]} | sort"
+        equiv_cmd = f"find -L {self.temp_dir} -type f -print0 | xargs -0 {equiv_cmds[self.map.hash_type.hash_func.__name__]} | sort"
         equiv_cmd_output = subprocess.getoutput(equiv_cmd)
         self.assertEqual(hashpatch_checkfile_output, equiv_cmd_output)
 

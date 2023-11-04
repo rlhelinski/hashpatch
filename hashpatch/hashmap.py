@@ -6,7 +6,7 @@ import hashlib
 import logging
 import base64
 import os.path
-from os.path import isfile, join
+from os.path import isfile, join, dirname
 from tqdm import tqdm
 from multiprocessing import Pool, cpu_count
 from collections import defaultdict
@@ -62,7 +62,10 @@ class HashDirectory:
 
     def compute_file_hash(self, filepath):
         if os.path.islink(filepath):
-            filehash = self.hash_type.hash_func(os.readlink(filepath).encode('utf-8'))
+            link_target = join(dirname(filepath), os.readlink(filepath))
+            if os.path.isdir(link_target):
+                return None, filepath
+            filehash = hash_chunk_file(self.hash_type.hash_func, link_target)
         else:
             filehash = hash_chunk_file(self.hash_type.hash_func, filepath)
 
@@ -138,7 +141,8 @@ class CheckFileHashMap(HashDirectory):
             imap = pool.imap_unordered(self.compute_file_hash, walker.walk())
             pbar = tqdm(imap, total=walker.count_files(), unit=" files")
             for raw_hash, filepath in pbar:
-                self.add_file_hash(raw_hash, filepath)
+                if raw_hash is not None:
+                    self.add_file_hash(raw_hash, filepath)
 
     def __load_file_lines(self, hash_file):
         line_num = 1
